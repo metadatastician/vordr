@@ -1,86 +1,51 @@
 # SPDX-License-Identifier: MPL-2.0
-# Dependabot configuration for vordr repository
-# https://docs.github.com/en/code-security/dependabot/dependabot-version-updates
+# Dependabot configuration for RSR-compliant repositories
+# Covers common ecosystems - remove unused ones for your project
 
 version: 2
 updates:
-  # Rust dependencies (Cargo)
+  # GitHub Actions - always include
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      actions:
+        patterns:
+          - "*"
+
+  # Rust/Cargo
   - package-ecosystem: "cargo"
-    directory: "/src/rust"
+    directory: "/"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 10
-    allow:
-      - dependency-type: "direct"
-      - dependency-type: "indirect"
-    labels:
-      - "dependencies"
-      - "rust"
-      - "bot"
-    reviewers:
-      - "hyperpolymath"
-    commit-message:
-      prefix: "chore"
-      prefix-development: true
-      include-scope: true
+    # `open-pull-requests-limit: 0` suppresses routine version-update PRs
+    # while leaving Dependabot SECURITY PRs flowing. The previous
+    # `ignore: "*" patch` rule also silenced security PRs under GitHub\'s
+    # current Dependabot behaviour. See rsr-template-repo commit 78b050e
+    # and 007-lang/audits/audit-dependabot-automation-gap-2026-04-17.md.
+    open-pull-requests-limit: 0
 
-  # npm dependencies for MCP adapter
-  - package-ecosystem: "npm"
-    directory: "/src/mcp-adapter"
-    schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 10
-    allow:
-      - dependency-type: "direct"
-      - dependency-type: "indirect"
-    labels:
-      - "dependencies"
-      - "npm"
-      - "bot"
-    reviewers:
-      - "hyperpolymath"
-    commit-message:
-      prefix: "chore"
-      prefix-development: true
-      include-scope: true
-
-  # npm dependencies for VS Code extension
-  - package-ecosystem: "npm"
-    directory: "/editors/vscode"
-    schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 10
-    allow:
-      - dependency-type: "direct"
-      - dependency-type: "indirect"
-    labels:
-      - "dependencies"
-      - "npm"
-      - "vscode"
-      - "bot"
-    reviewers:
-      - "hyperpolymath"
-    commit-message:
-      prefix: "chore"
-      prefix-development: true
-      include-scope: true
-
-  # Elixir dependencies (Mix)
+  # Elixir/Mix
   - package-ecosystem: "mix"
-    directory: "/src/elixir"
+    directory: "/"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 10
-    allow:
-      - dependency-type: "direct"
-      - dependency-type: "indirect"
-    labels:
-      - "dependencies"
-      - "elixir"
-      - "bot"
-    reviewers:
-      - "hyperpolymath"
-    commit-message:
-      prefix: "chore"
-      prefix-development: true
-      include-scope: true
+
+  # Node.js/npm
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  # Python/pip
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  # Nix flakes
+  - package-ecosystem: "nix"
+    directory: "/"
+    schedule:
+      interval: "weekly"
