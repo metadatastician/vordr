@@ -1,0 +1,86 @@
+# SPDX-License-Identifier: MPL-2.0
+# Dependabot configuration for vordr repository
+# https://docs.github.com/en/code-security/dependabot/dependabot-version-updates
+
+version: 2
+updates:
+  # Rust dependencies (Cargo)
+  - package-ecosystem: "cargo"
+    directory: "/src/rust"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    allow:
+      - dependency-type: "direct"
+      - dependency-type: "indirect"
+    labels:
+      - "dependencies"
+      - "rust"
+      - "bot"
+    reviewers:
+      - "hyperpolymath"
+    commit-message:
+      prefix: "chore"
+      prefix-development: true
+      include-scope: true
+
+  # npm dependencies for MCP adapter
+  - package-ecosystem: "npm"
+    directory: "/src/mcp-adapter"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    allow:
+      - dependency-type: "direct"
+      - dependency-type: "indirect"
+    labels:
+      - "dependencies"
+      - "npm"
+      - "bot"
+    reviewers:
+      - "hyperpolymath"
+    commit-message:
+      prefix: "chore"
+      prefix-development: true
+      include-scope: true
+
+  # npm dependencies for VS Code extension
+  - package-ecosystem: "npm"
+    directory: "/editors/vscode"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    allow:
+      - dependency-type: "direct"
+      - dependency-type: "indirect"
+    labels:
+      - "dependencies"
+      - "npm"
+      - "vscode"
+      - "bot"
+    reviewers:
+      - "hyperpolymath"
+    commit-message:
+      prefix: "chore"
+      prefix-development: true
+      include-scope: true
+
+  # Elixir dependencies (Mix)
+  - package-ecosystem: "mix"
+    directory: "/src/elixir"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    allow:
+      - dependency-type: "direct"
+      - dependency-type: "indirect"
+    labels:
+      - "dependencies"
+      - "elixir"
+      - "bot"
+    reviewers:
+      - "hyperpolymath"
+    commit-message:
+      prefix: "chore"
+      prefix-development: true
+      include-scope: true
