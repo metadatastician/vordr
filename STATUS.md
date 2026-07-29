@@ -46,6 +46,28 @@
 5. Migrate build.zig to Zig 0.16
 6. Fill in ABI-FFI-README.md or delete it
 
+## CI/CD status
+
+As of 2026-07-28, post-merge: **3/3 workflows parse clean**, with zero
+illegal `timeout-minutes` on reusable-call jobs and zero phantom `codeql-action` SHAs.
+(Three sweep-introduced fault classes were repaired and merged on this date — see the
+ecosystem sitrep for the taxonomy.)
+
+**Gates that genuinely enforce something:**
+
+- **None.** This repo has no build or test gate that can fail.
+
+**Gates that run but cannot fail (or check nothing):**
+
+- `codeql.yml` pinned to `language: actions` — zero application source analysed
+- **no build or test gate on GitHub at all**
+- GitLab: 13 of 19 jobs `allow_failure: true`, including *every* proof job
+- `idris2-check` uses the fake per-file `--check` form (exits 0 on error) and omits `Proofs.idr` and `SBOM.idr`
+- `spark-prove` is `allow_failure: true` with the comment `# SPARK proofs are aspirational for now`
+
+> A gate is not done until it has been observed to **fail** on a deliberate defect.
+> Every fake gate listed above passed its own review.
+
 ## Ecosystem position
 
 This repo is part of the six-repo container stack designed by `stapeln`. The canonical
