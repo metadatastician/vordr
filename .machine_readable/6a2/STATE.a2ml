@@ -1,48 +1,63 @@
 # SPDX-License-Identifier: MPL-2.0
 # Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
 #
-# STATE.a2ml — Vordr project state
+# STATE.a2ml — Vordr project state (MEASURED, not self-reported)
 [metadata]
 project = "vordr"
 version = "0.1.0"
-last-updated = "2026-03-10"
+last-updated = "2026-07-28"
 status = "active"
-session = "converted from scheme — 2026-04-11"
+session = "measured audit — 2026-07-28"
+measurement-method = "file reads, builds executed, tests run; see STATUS.md"
 
 [project-context]
 name = "Vordr"
-purpose = """No actual container runtime implementation"""
-completion-percentage = 45
+purpose = """Container health monitoring and crash detection (guardian of the running stack)"""
+completion-percentage = 40
+completion-basis = "measured 2026-07-28; supersedes earlier self-reported figure"
 
 [position]
-phase = "early-alpha"   # design | implementation | testing | maintenance | archived
-maturity = "experimental"  # experimental | alpha | beta | production | lts
+phase = "implementation"   # design | implementation | testing | maintenance | archived
+maturity = "alpha"  # experimental | alpha | beta | production | lts
 
-[route-to-mvp]
-milestones = [
-  { name = "Vordr", completion = 100 },
-  { name = "Documentation", completion = 60 },
-  { name = "Idris2 Proofs", completion = 90 },
-  { name = "Rust CLI", completion = 30 },
-  { name = "Rust eBPF", completion = 10 },
-  { name = "Elixir Orchestrator", completion = 85 },
-  { name = "Ada/SPARK Trust", completion = 5 },
-  { name = "Zig FFI", completion = 5 },
-  { name = "Temporal Isolation", completion = 70 },
-  { name = "MCP Server", completion = 80 },
-  { name = "CI/CD", completion = 35 },
+[verified-working]
+items = [
+  """17,643 lines of Rust; `cargo check --all-targets` passes; 143 tests pass across 370 functions with zero `todo!()`/`unimplemented!()`""",
+  """**The best formal proofs in the estate**: 8 `.idr` files, 84 top-level definitions, `vordr.ipkg` with `opts = "--total"`, and ZERO `believe_me`/`assert_total`/holes in code""",
+  """Genuine SPARK annotations: `SPARK_Mode (On)` in 4 of 5 spec files, 22 `Pre =>`/`Post =>` contracts, with `policy_interface.ads` correctly marked `Off` (FFI cannot be proven)""",
+  """All 10 Ada source files are syntactically valid (`gcc -gnats`)""",
+  """The README is the most honest self-assessment in the estate — it volunteers 'No real container runtime', 'zero BPF bytecode', 'Ada/SPARK never compiled with GNAT; C stubs used at runtime'""",
 ]
 
 [blockers-and-issues]
 issues = [
-  # No blockers recorded
+  """**FAIL-OPEN SECURITY BYPASS.** `src/rust/build.rs` attempts `gprbuild -P policy.gpr` and, on failure, SILENTLY substitutes `gatekeeper_stub.c` and continues. The stub's own comment reads `// WARNING: This provides NO security guarantees!` and it returns `VALID` for every input. All 143 passing tests exercise the stub, not the Ada. A `cargo build` emitting only a `warning:` produces a binary whose policy gate is a no-op.""",
+  """Root cause is known and small: `a-cofove.ads:36:07 — This package has been moved to the SPARK library shipped with any SPARK release starting with version 23` (plus `-gnatyo`/`-gnatyk` style errors).""",
+  """**`gnatprove` has never been run** — no `.spark` artifacts anywhere in the repo. The 'SPARK-verified' claim is unsubstantiated.""",
+  """`ffi/zig` fails to build on Zig 0.16 (`method invocation only supports up to one level of implicit pointer dereferencing`) — a mechanical 0.15->0.16 migration.""",
+  """`ABI-FFI-README.md` is an UNFILLED TEMPLATE — line 2 is literally `{{~ Aditionally delete this line and fill out the template below ~}}`, and it is byte-identical to cerro-torre's.""",
+  """`codemeta.json` claims `gitlab.com/hyperpolymath/vordr` — wrong host and wrong owner.""",
+  """No build or test gate on GitHub; on GitLab 13 of 19 jobs are `allow_failure: true`, including every proof job and `spark-prove`.""",
 ]
 
 [critical-next-actions]
 actions = [
-  # No actions recorded
+  """Make the Ada failure HARD in build.rs — fail unless VORDR_ALLOW_STUB_GATEKEEPER=1 is set explicitly""",
+  """Fix the SPARK library import error (a-cofove.ads) so the real gatekeeper compiles""",
+  """Run gnatprove at least once, or drop the SPARK-verified claim""",
+  """RULING NEEDED (R3): confirm vordr = health monitoring + crash detection""",
+  """Migrate build.zig to Zig 0.16""",
+  """Fill in ABI-FFI-README.md or delete it""",
 ]
 
+[ecosystem]
+stack = ["stapeln", "selur", "vordr", "rokur", "cerro-torre", "svalinn"]
+designer = "stapeln"
+canonical-contract = "container/stapeln/ — 8-file bundle, one file per satellite"
+contract-status = "NOT EMITTED BY STAPELN AND NOT CONSUMED BY ANY SATELLITE as of 2026-07-28"
+runtime-chain = "svalinn(443/80) -> rokur(8081) -> app; vordr watches; cerro-torre signs; selur is network driver"
+
 [maintenance-status]
-last-run-utc = "2026-03-10T00:00:00Z"
-last-result = "unknown"  # unknown | pass | warn | fail
+last-run-utc = "2026-07-28T00:00:00Z"
+last-result = "measured"  # unknown | pass | warn | fail | measured
+reference = "dev-notes/stapeln-ecosystem-COMPREHENSIVE-SITREP-2026-07-28.md"
