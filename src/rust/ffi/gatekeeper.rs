@@ -405,6 +405,11 @@ mod tests {
     }
 
     #[test]
+    // Asserts that a VALID config is ACCEPTED, so it can only pass when a real
+    // verifier is linked. Under the fail-closed stub everything is rejected --
+    // ignored rather than rewritten, because changing the assertion to expect
+    // rejection would enshrine the stub as the expected behaviour.
+    #[cfg_attr(gatekeeper_stub, ignore = "requires the real Ada gatekeeper; the stub fails closed")]
     fn test_validate_secure_config() {
         setup();
         let config = r#"{"process": {"user": {"uid": 1000}}}"#;
@@ -420,6 +425,11 @@ mod tests {
     }
 
     #[test]
+    // Asserts that a VALID config is ACCEPTED, so it can only pass when a real
+    // verifier is linked. Under the fail-closed stub everything is rejected --
+    // ignored rather than rewritten, because changing the assertion to expect
+    // rejection would enshrine the stub as the expected behaviour.
+    #[cfg_attr(gatekeeper_stub, ignore = "requires the real Ada gatekeeper; the stub fails closed")]
     fn test_config_builder_defaults() {
         setup();
         let result = ConfigValidator::new().validate();
@@ -427,6 +437,11 @@ mod tests {
     }
 
     #[test]
+    // Asserts that a VALID config is ACCEPTED, so it can only pass when a real
+    // verifier is linked. Under the fail-closed stub everything is rejected --
+    // ignored rather than rewritten, because changing the assertion to expect
+    // rejection would enshrine the stub as the expected behaviour.
+    #[cfg_attr(gatekeeper_stub, ignore = "requires the real Ada gatekeeper; the stub fails closed")]
     fn test_config_builder_with_user_id() {
         setup();
         let result = ConfigValidator::new().user_id(0).user_namespace(true).validate();

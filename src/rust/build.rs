@@ -6,13 +6,19 @@
 //! 2. Ada static library compilation via gprbuild
 //! 3. Linking the resulting library with the Rust binary
 //!
-//! If GNAT/SPARK tools are not available, a stub implementation is used.
+//! If GNAT/SPARK tools are not available, a FAIL-CLOSED stub is used: it
+//! rejects every input rather than accepting it. A gate that cannot verify
+//! must not pretend it did.
 
 use std::env;
 use std::path::PathBuf;
 use std::process::Command;
 
 fn main() {
+    // Declared on EVERY path so `cfg(gatekeeper_stub)` is always a known cfg,
+    // even when the real Ada library is what gets linked.
+    println!("cargo:rustc-check-cfg=cfg(gatekeeper_stub)");
+
     // Ada/SPARK code is in ../ada relative to the Rust crate
     let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
     let spark_path = PathBuf::from(&manifest_dir).join("..").join("ada");
@@ -20,12 +26,17 @@ fn main() {
     // Check if we should skip SPARK verification
     let skip_verify = env::var("SKIP_SPARK_VERIFY").is_ok();
 
+    // Lets the stub path be exercised on a machine that HAS GNAT, which is the
+    // only way to test that the fail-closed behaviour actually fails closed.
+    let force_stub = env::var("VORDR_FORCE_STUB").is_ok();
+
     // Check if GNAT tools are available
-    let has_gnat = Command::new("gprbuild")
-        .arg("--version")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false);
+    let has_gnat = !force_stub
+        && Command::new("gprbuild")
+            .arg("--version")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
 
     let has_gnatprove = Command::new("gnatprove")
         .arg("--version")
@@ -34,7 +45,12 @@ fn main() {
         .unwrap_or(false);
 
     if !has_gnat {
-        println!("cargo:warning=GNAT not found - using stub gatekeeper implementation");
+        if force_stub {
+            println!("cargo:warning=VORDR_FORCE_STUB set - using the FAIL-CLOSED stub gatekeeper");
+        } else {
+            println!("cargo:warning=GNAT not found - using the FAIL-CLOSED stub gatekeeper");
+        }
+        println!("cargo:warning=The stub REJECTS EVERY CONFIG. Install GNAT for real verification.");
         generate_stub_library();
         return;
     }
@@ -90,11 +106,18 @@ fn main() {
             println!("cargo:warning=Ada compilation successful");
         }
         _ => {
-            // Ada compilation failed - fall back to stub implementation
-            println!("cargo:warning=Ada compilation failed - using stub implementation");
-            println!("cargo:warning=Fix Ada/SPARK code or install GNAT for full security");
-            generate_stub_library();
-            return;
+            // GNAT IS INSTALLED and the Ada still failed to build. Silently
+            // substituting the stub here is how a security gate becomes
+            // decorative: the toolchain is present, so the only reason to fall
+            // back is that the verified code is broken -- exactly when a
+            // fallback is least defensible. Fail the build instead.
+            panic!(
+                "Ada gatekeeper failed to compile while GNAT is installed. \
+                 Refusing to substitute the fail-closed stub, because a build \
+                 that quietly downgrades its own security layer is worse than \
+                 one that stops. Fix the Ada in src/ada/, or set \
+                 VORDR_FORCE_STUB=1 to build against the stub deliberately."
+            );
         }
     }
 
@@ -140,19 +163,24 @@ fn generate_stub_library() {
 #define PARSE_ERROR 5
 #define INTERNAL_ERROR -1
 
-// Stub: Always returns valid for basic testing
-// WARNING: This provides NO security guarantees!
+// Stub gatekeeper: FAILS CLOSED. Rejects every configuration.
+//
+// This stub provides NO verification. Its predecessor returned VALID for any
+// non-empty input, which meant a build without GNAT silently shipped a
+// security gate that approved everything -- and 161 tests exercised THAT,
+// so the suite was green precisely because nothing was being checked.
+//
+// INTERNAL_ERROR is deliberate rather than one of the INVALID_* codes: it maps
+// to GatekeeperError::InternalError, which no real validation outcome
+// produces, so a caller (or a test) can tell "the verifier is absent" apart
+// from "this config was judged unsafe".
 int verify_json_config(const char* json_str) {
-    if (json_str == NULL || strlen(json_str) == 0) {
-        return PARSE_ERROR;
-    }
-    // Stub implementation - returns valid
-    // Real implementation uses formally verified Ada/SPARK
-    return VALID;
+    (void)json_str;
+    return INTERNAL_ERROR;
 }
 
 static const char* error_messages[] = {
-    "Configuration is valid (STUB - not verified)",
+    "Configuration is valid",
     "SYS_ADMIN capability requires privileged mode",
     "Root UID (0) requires user namespace to be enabled",
     "NET_ADMIN capability requires Restricted or Admin network mode",
@@ -168,16 +196,16 @@ const char* get_error_message(int code) {
     return error_messages[6];
 }
 
+// The stub cannot sanitise either: passing input through unchanged while
+// reporting success would be the same lie in a different shape.
+
+
 int sanitise_config(const char* json_str, char* output_buffer, int buffer_size) {
-    if (json_str == NULL || output_buffer == NULL || buffer_size <= 0) {
-        return -PARSE_ERROR;
-    }
-    size_t len = strlen(json_str);
-    if ((int)len >= buffer_size) {
-        return -PARSE_ERROR;
-    }
-    strcpy(output_buffer, json_str);
-    return (int)len;
+    (void)json_str; (void)output_buffer; (void)buffer_size;
+    // NOTE: returns INTERNAL_ERROR (-1), NOT -INTERNAL_ERROR. This function
+    // signals success as a non-negative length, so -INTERNAL_ERROR would be
+    // +1 -- an error reported as "sanitised, length 1".
+    return INTERNAL_ERROR;
 }
 
 const char* gatekeeper_version(void) {
@@ -196,5 +224,10 @@ int gatekeeper_init(void) {
         .file(&stub_file)
         .compile("policy");
 
+    // Anything linked against this stub is NOT verified. The cfg lets tests
+    // that assume a working verifier opt out explicitly instead of failing
+    // for a reason unrelated to what they test.
+    println!("cargo:rustc-cfg=gatekeeper_stub");
+    println!("cargo:warning=LINKED AGAINST THE FAIL-CLOSED STUB: every config will be REJECTED");
     println!("cargo:rerun-if-changed=build.rs");
 }
