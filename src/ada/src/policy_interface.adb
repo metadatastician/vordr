@@ -13,6 +13,13 @@ package body Policy_Interface is
    use Interfaces.C;
    use Interfaces.C.Strings;
 
+   --  Makes "/=" on OCI_Parser.Parse_Status directly visible. Without it the
+   --  comparisons at :65 and :154 fail with "operator for type Parse_Status is
+   --  not directly visible" -- GNAT even suggests it: "use clause would make
+   --  operation legal". `use type` imports only the type's operators, not the
+   --  whole package, so nothing else changes visibility.
+   use type OCI_Parser.Parse_Status;
+
    --  Static error messages (must remain in scope)
    Msg_Valid             : aliased constant String := "Configuration is valid and secure" & ASCII.NUL;
    Msg_Invalid_Caps      : aliased constant String := "SYS_ADMIN capability requires privileged mode" & ASCII.NUL;
