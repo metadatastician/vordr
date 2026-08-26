@@ -4,7 +4,6 @@
 
 pragma SPARK_Mode (On);
 
-with Ada.Containers.Formal_Vectors;
 
 package Threshold_Signatures is
 
@@ -52,13 +51,23 @@ package Threshold_Signatures is
       Share_Count   : Natural;           --  Number of valid shares collected
    end record;
 
-   --  GHOST PREDICATE: Valid threshold configuration (k <= n)
+   --  Valid threshold configuration (k <= n).
+   --
+   --  NOT Ghost. Ghost entities exist only for proof and may not appear in
+   --  executable code, but Add_Share calls this in real control flow
+   --  (threshold_signatures.adb:49) to reject a malformed scheme at runtime --
+   --  hence "ghost entity cannot appear in this context". Dropping the aspect
+   --  is the change that matches how the function is actually used; the
+   --  alternative, deleting the runtime check to keep it Ghost, would remove a
+   --  guard from signature handling to satisfy a label.
+   --
+   --  Every Pre/Post referring to it (:86, :95, and others) remains valid: a
+   --  non-ghost function is usable in contracts, the reverse is what is barred.
    function Is_Valid_Scheme (Scheme : Threshold_Scheme) return Boolean is
      (Scheme.Threshold <= Scheme.Total_Signers
       and Scheme.Total_Signers <= Max_Signers
       and Scheme.Threshold >= 1
-      and Scheme.Share_Count <= Scheme.Total_Signers)
-   with Ghost;
+      and Scheme.Share_Count <= Scheme.Total_Signers);
 
    --  GHOST PREDICATE: Threshold reached
    function Threshold_Reached (Scheme : Threshold_Scheme) return Boolean is
