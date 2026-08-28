@@ -265,6 +265,55 @@ package body OCI_Parser is
          return Result;
       end if;
 
+      --  FAIL CLOSED on unparseable input.
+      --
+      --  Status was pre-set to Parse_OK above, and NOTHING in the parse below
+      --  ever sets a failure status: each of the three Find_Field lookups just
+      --  leaves the (secure) Default_Config in place when its field is absent.
+      --  So any non-empty, in-length input -- "aaaa", truncated JSON, a bare
+      --  word -- kept Parse_OK, and Verify_Json_Config then validated the
+      --  untouched Default_Config and reported "valid and secure" (exit 0) for
+      --  input it never parsed. That is a gate that cannot fail.
+      --
+      --  Require, at minimum, that the document is a JSON object: first
+      --  non-whitespace character '{' and last non-whitespace character '}'.
+      --  This is a STRUCTURAL floor, not a schema. Whether specific fields
+      --  (process/user/uid, ...) must be present to consider a document
+      --  well-formed is an owner decision, deliberately not ruled on here (a
+      --  valid OCI config may legitimately omit e.g. root.readonly). Both
+      --  inputs the Rust FFI test-suite asserts must be ADMITTED begin with
+      --  '{' and end with '}', so this rejects garbage without breaking them.
+      declare
+         Lo       : constant Natural := Json'First;
+         Hi       : constant Natural := Json'First + Length - 1;
+         First_NW : Natural := Lo;
+         Last_NW  : Natural := Hi;
+      begin
+         while First_NW <= Hi
+           and then First_NW <= Json'Last
+           and then Is_Whitespace (Json (First_NW))
+         loop
+            First_NW := First_NW + 1;
+         end loop;
+
+         while Last_NW >= Lo
+           and then Last_NW <= Json'Last
+           and then Is_Whitespace (Json (Last_NW))
+         loop
+            Last_NW := Last_NW - 1;
+         end loop;
+
+         if First_NW > Hi
+           or else First_NW > Json'Last
+           or else Json (First_NW) /= '{'
+           or else Last_NW < Lo
+           or else Json (Last_NW) /= '}'
+         then
+            Result.Status := Parse_Invalid_Json;
+            return Result;
+         end if;
+      end;
+
       State.Position := Json'First;
       State.Length := Length;
 
