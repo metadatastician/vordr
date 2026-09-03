@@ -97,11 +97,24 @@ package body Threshold_Signatures is
       Message : String
    ) return Boolean
    is
+      pragma Unreferenced (Share);
       pragma Unreferenced (Message);
    begin
-      --  In production: call to libsodium/OpenSSL for Ed25519 verification
-      --  For SPARK proof: assume valid format implies verifiable
-      return Share.Valid and then Share.Signer /= Null_Signer_ID;
+      --  FAIL CLOSED. No cryptographic verification is implemented here yet.
+      --
+      --  The previous body returned
+      --     Share.Valid and then Share.Signer /= Null_Signer_ID
+      --  i.e. it approved any share whose Valid flag was set and whose signer
+      --  was non-null, while ignoring Message entirely (pragma Unreferenced).
+      --  Valid is an attacker-assertable record field, not a derived fact, so
+      --  that stub verified NOTHING: it was a crypto gate that could not fail.
+      --
+      --  A verifier that cannot verify must DENY, not approve. Returning False
+      --  means that the moment this is wired into Add_Share (which today trusts
+      --  Share.Valid directly and never calls this function -- see PR notes),
+      --  the path fails closed until real Ed25519 verification against Message
+      --  (libsodium/OpenSSL) replaces this body.
+      return False;
    end Verify_Share;
 
 end Threshold_Signatures;
