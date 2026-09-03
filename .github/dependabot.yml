@@ -1,6 +1,20 @@
 # SPDX-License-Identifier: MPL-2.0
 # Dependabot configuration for RSR-compliant repositories
-# Covers common ecosystems - remove unused ones for your project
+#
+# Every entry below points at a manifest that ACTUALLY EXISTS in this repo.
+# Verified 2026-09-03 against `git/trees/main?recursive=1`:
+#   src/rust/Cargo.toml · src/elixir/mix.exs · src/mcp-adapter/package.json
+#   editors/vscode/package.json
+# There is no pyproject.toml/requirements.txt (and Python is banned estate-wide)
+# and no flake.nix, so `pip` and `nix` are not declared. An ecosystem declared
+# without a manifest fails EVERY run: hex/npm_and_yarn/pip/nix had failed weekly
+# since at least 2026-08-15 while github_actions passed.
+#
+# `open-pull-requests-limit: 0` suppresses routine version-update PRs while
+# leaving Dependabot SECURITY PRs flowing. The previous `ignore: "*" patch` rule
+# also silenced security PRs under GitHub's current Dependabot behaviour.
+# See rsr-template-repo commit 78b050e and
+# 007-lang/audits/audit-dependabot-automation-gap-2026-04-17.md.
 
 version: 2
 updates:
@@ -14,38 +28,30 @@ updates:
         patterns:
           - "*"
 
-  # Rust/Cargo
+  # Rust/Cargo - the gatekeeper crate
   - package-ecosystem: "cargo"
-    directory: "/"
+    directory: "/src/rust"
     schedule:
       interval: "weekly"
-    # `open-pull-requests-limit: 0` suppresses routine version-update PRs
-    # while leaving Dependabot SECURITY PRs flowing. The previous
-    # `ignore: "*" patch` rule also silenced security PRs under GitHub\'s
-    # current Dependabot behaviour. See rsr-template-repo commit 78b050e
-    # and 007-lang/audits/audit-dependabot-automation-gap-2026-04-17.md.
     open-pull-requests-limit: 0
 
   # Elixir/Mix
   - package-ecosystem: "mix"
-    directory: "/"
+    directory: "/src/elixir"
     schedule:
       interval: "weekly"
+    open-pull-requests-limit: 0
 
-  # Node.js/npm
+  # Node.js/npm - MCP adapter
   - package-ecosystem: "npm"
-    directory: "/"
+    directory: "/src/mcp-adapter"
     schedule:
       interval: "weekly"
+    open-pull-requests-limit: 0
 
-  # Python/pip
-  - package-ecosystem: "pip"
-    directory: "/"
+  # Node.js/npm - VS Code extension
+  - package-ecosystem: "npm"
+    directory: "/editors/vscode"
     schedule:
       interval: "weekly"
-
-  # Nix flakes
-  - package-ecosystem: "nix"
-    directory: "/"
-    schedule:
-      interval: "weekly"
+    open-pull-requests-limit: 0
