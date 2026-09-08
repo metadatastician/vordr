@@ -1,0 +1,182 @@
+# SPDX-License-Identifier: MPL-2.0
+#
+# vordr's FIRST build-and-test gate.
+#
+# Before this file, vordr had five workflows (label-triage, labels, oikosbot,
+# pages, secret-scanner) and not one of them compiled or executed a single line
+# of vordr. "vordr CI green" has meant "vordr was never built".
+#
+# ---------------------------------------------------------------------------
+# SCOPE -- read this before treating a green tick as coverage
+# ---------------------------------------------------------------------------
+# This gate builds and tests the RUST crate ONLY, linked against the
+# FAIL-CLOSED stub gatekeeper. The Ada/SPARK gatekeeper under src/ada/ is NOT
+# built here, because it does not currently compile. Measured 2026-09-09 on a
+# machine with GNAT 14 and gprbuild installed:
+#
+#   gprbuild -P src/ada/policy.gpr   ->  exit 4, 28 error lines,
+#                                        7 distinct E0015 sites in oci_parser.ads
+#   oci_parser.ads:67:07: error: function cannot have parameter of mode
+#                                "out" or "in out" in SPARK [E0015]
+#
+# Repairing that is separate work and is tracked separately. Nothing in this
+# workflow should be read as evidence that the Ada gatekeeper builds, proves,
+# or runs.
+#
+# ---------------------------------------------------------------------------
+# WHY VORDR_FORCE_STUB=1 IS SET EXPLICITLY
+# ---------------------------------------------------------------------------
+# src/rust/build.rs probes for gprbuild at build time:
+#   * no GNAT            -> links the fail-closed stub (every config REJECTED)
+#   * GNAT present, Ada fails to compile -> panics, refusing to silently
+#     downgrade the security layer to the stub
+#
+# ubuntu-latest ships no GNAT today, so omitting this variable would make the
+# job pass by accident of the runner image, and break with a confusing panic
+# the day that image starts shipping GNAT. Setting it means the workflow states
+# what it is actually testing instead of inheriting it from the environment.
+#
+# ---------------------------------------------------------------------------
+# WHY cargo IS CALLED DIRECTLY AND NOT THROUGH `just`
+# ---------------------------------------------------------------------------
+# Every build and test recipe in the Justfile has the shape
+#     if [ -f X ]; then <do the work>; else echo "No X yet"; fi
+# so `just build` and `just test` both report success when nothing ran. A gate
+# that cannot fail for absence is not a gate. Each job below therefore asserts
+# its own inputs exist before it runs, and the test job asserts a non-zero
+# number of tests actually executed.
+#
+# No attestation, no signing, no `id-token: write` anywhere in this file.
+name: "Build and Test"
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  rust-build:
+    name: "Rust build (fail-closed stub)"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      VORDR_FORCE_STUB: "1"
+      CARGO_TERM_COLOR: always
+    steps:
+      - name: "Checkout"
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: "Positive control -- the crate this job claims to build must exist"
+        run: |
+          set -euo pipefail
+          missing=0
+          for f in src/rust/Cargo.toml src/rust/Cargo.lock src/rust/build.rs; do
+            if [ ! -f "$f" ]; then
+              echo "::error::missing $f"
+              missing=$((missing + 1))
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            echo "refusing to report a pass for a build that had nothing to build"
+            exit 1
+          fi
+          echo "manifest, lockfile and build script all present"
+
+      - name: "cargo build"
+        working-directory: src/rust
+        run: cargo build --locked --verbose
+
+      - name: "Report what was actually linked"
+        if: always()
+        run: |
+          {
+            echo "### vordr Rust build"
+            echo ""
+            echo "Linked against the **fail-closed stub** gatekeeper"
+            echo "(\`VORDR_FORCE_STUB=1\`). The stub REJECTS every config."
+            echo ""
+            echo "The Ada/SPARK gatekeeper under \`src/ada/\` was **not** built"
+            echo "in this job and is **not** covered by this result."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  rust-test:
+    name: "Rust tests (fail-closed stub)"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      VORDR_FORCE_STUB: "1"
+      CARGO_TERM_COLOR: always
+    steps:
+      - name: "Checkout"
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: "Positive control -- the crate this job claims to test must exist"
+        run: |
+          set -euo pipefail
+          missing=0
+          for f in src/rust/Cargo.toml src/rust/Cargo.lock; do
+            if [ ! -f "$f" ]; then
+              echo "::error::missing $f"
+              missing=$((missing + 1))
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            echo "refusing to report a pass for a test run that had nothing to test"
+            exit 1
+          fi
+          echo "manifest and lockfile present"
+
+      - name: "cargo test"
+        working-directory: src/rust
+        run: |
+          set -euo pipefail
+          cargo test --locked 2>&1 | tee "${RUNNER_TEMP}/cargo-test.log"
+
+      - name: "Positive control -- a non-zero number of tests must have run"
+        working-directory: src/rust
+        run: |
+          set -euo pipefail
+          log="${RUNNER_TEMP}/cargo-test.log"
+          if [ ! -s "$log" ]; then
+            echo "::error::the cargo test log is empty or absent -- cannot prove anything ran"
+            exit 1
+          fi
+          # `awk ... END {print s+0}` always prints a number, including for
+          # empty input. A bare `grep -c` here would print nothing and exit 1
+          # on no match, and the following `[ "" -gt 0 ]` would exit 2, which
+          # a `||` guard would swallow -- an assertion that skips itself.
+          binaries=$(grep -c '^test result:' "$log" || true)
+          binaries=${binaries:-0}
+          passed=$(sed -n 's/^test result: ok\. \([0-9][0-9]*\) passed.*/\1/p' "$log" \
+                   | awk '{s += $1} END {print s + 0}')
+          echo "test binaries reporting: ${binaries}"
+          echo "tests passed in total:   ${passed}"
+          if [ "$binaries" -lt 1 ]; then
+            echo "::error::no test binary reported a result -- a suite that runs nothing is not a gate"
+            exit 1
+          fi
+          if [ "$passed" -lt 1 ]; then
+            echo "::error::zero tests passed -- refusing to call a vacuous run green"
+            exit 1
+          fi
+          {
+            echo "### vordr Rust tests"
+            echo ""
+            echo "| measure | value |"
+            echo "| --- | --- |"
+            echo "| test binaries reporting | ${binaries} |"
+            echo "| tests passed | ${passed} |"
+            echo ""
+            echo "Run against the **fail-closed stub** gatekeeper. Tests that"
+            echo "require the real Ada verifier carry"
+            echo "\`#[cfg_attr(gatekeeper_stub, ignore)]\` and are skipped here."
+            echo "The Ada gatekeeper is **not** built or tested by this workflow."
+          } >> "$GITHUB_STEP_SUMMARY"
