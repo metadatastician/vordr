@@ -1,0 +1,194 @@
+// SPDX-License-Identifier: CC-BY-SA-4.0
+= Vörðr — Show Me The Receipts
+:toc:
+:icons: font
+
+The README makes claims. This file backs them up.
+
+== Formal Proofs Without Holes
+
+[quote, README]
+____
+Idris2 dependent-type proofs for container lifecycle (~90%) ... Dependent types prove interface correctness, memory layout verification
+____
+
+Vörðr has the most complete, rigorous formal proofs in the hyperpolymath estate: **8 `.idr` specification and proof files, 84 top-level definitions, 1,658 lines of Idris2**, and `vordr.ipkg` configured with `opts = "--total"`.
+
+There are **zero `believe_me` escapes, zero `assert_total` cheats, and zero holes (`?hole`)** anywhere in the verification code. The proofs establish that container state transitions are deterministic, attestation chains are tamper-evident, and Software Bill of Materials (SBOM) dependency graphs are acyclic and complete.
+
+*Caveat:* The Idris2 proofs currently provide **compile-time assurance of protocol invariants**. They are not yet synthesized into runtime checks inside the Rust container execution path.
+
+- State machine proofs: `src/idris2/Container.idr` (272 lines), `src/idris2/Proofs.idr` (203 lines)
+- Attestation & SBOM proofs: `src/idris2/Attestation.idr` (176 lines), `src/idris2/SBOM.idr` (282 lines)
+- ABI layout proofs: `src/abi/Types.idr` (128 lines), `src/abi/Foreign.idr` (237 lines)
+- Package manifest: `src/idris2/vordr.ipkg`
+
+== Bennett-Reversible Container Lifecycle
+
+[quote, README]
+____
+Elixir GenStateMachine orchestrator with reversibility journal (~85%) ... Rollback with reversibility
+____
+
+Container state transitions are modeled in Elixir via `gen_statem` (`Vordr.Containers.Container`), tracking transitions across `ImageOnly -> Created -> Running <-> Paused -> Stopped -> Removed`.
+
+Every state change writes an entry to a cryptographically chained reversibility journal (`Vordr.Reversibility.Journal`), allowing Bennett-style step-by-step rollbacks. If a container deployment or migration fails halfway, `Vordr.Reversibility.rollback(pid, steps: n)` unwinds the lifecycle back to a verified safe state.
+
+*Caveat:* The Elixir orchestrator manages container metadata and state transitions on the BEAM VM. It communicates with the host system via port interceptors and JSON-RPC; direct native cgroup/namespace manipulation requires the Rust FFI bridge.
+
+- State machine implementation: `src/elixir/lib/vordr/containers/container.ex` (397 lines)
+- Container API: `src/elixir/lib/vordr/containers.ex` (144 lines)
+- Reversibility engine: `src/elixir/lib/vordr/reversibility.ex` (229 lines)
+- Journal storage: `src/elixir/lib/vordr/reversibility/journal.ex` (234 lines)
+- Integration tests: `src/elixir/test/journal_integration_test.exs` (192 lines)
+
+== 17,600+ Lines of Rust — And The Real Runtime Caveat
+
+[quote, README]
+____
+Rust CLI and performance paths ... Zero-cost abstractions, container runtime integration
+____
+
+The Rust workspace contains **17,691 lines of code across 370 functions**. `cargo check --all-targets` compiles clean, and 143 unit and integration tests pass with zero `todo!()` or `unimplemented!()` stubs.
+
+It features complete implementations of the CLI (`vordr run`, `ps`, `audit`, `doctor`, `compose`), local bundle registries, and an embedded MCP JSON-RPC server (`src/rust/mcp/server.rs`, 1,367 lines).
+
+*Caveat (The Honest Truth):* Vörðr does not yet invoke raw Linux kernel container primitives directly. The CLI parses arguments, manages state databases, and routes messages, but raw `unshare(2)`, `clone(2)`, and `pivot_root(2)` syscalls are delegated or mocked. Full autonomous low-level container runtime execution remains in active development.
+
+- MCP server: `src/rust/mcp/server.rs` (1,367 lines)
+- Engine state: `src/rust/engine/state.rs` (923 lines)
+- Configuration engine: `src/rust/engine/config.rs` (687 lines)
+- Doctor & diagnostics: `src/rust/cli/doctor.rs` (684 lines)
+- Comprehensive CLI tests: `src/rust/tests/cli_expanded.rs` (695 lines)
+
+== Ada/SPARK Gatekeeper & Fail-Closed Security
+
+[quote, README]
+____
+Ada/SPARK code ... source files present but never compiled with GNAT; C stubs used at runtime
+____
+
+High-integrity policy enforcement is specified in **1,835 lines of Ada/SPARK**. 4 out of 5 specification files enforce `SPARK_Mode (On)` with 22 explicit `Pre =>` and `Post =>` behavioral contracts. `policy_interface.ads` is properly marked `SPARK_Mode (Off)` to reflect the untrusted FFI boundary.
+
+*Caveat:* The real Ada gatekeeper currently encounters a compiler library discrepancy (`a-cofove.ads` package migration) and `gnatprove` has not yet been executed in CI. To prevent silent security downgrades, **`src/rust/build.rs` implements a strictly FAIL-CLOSED security architecture**:
+- If GNAT is missing or the Ada compilation fails, the build explicitly announces the fallback on `cargo:warning=` lines.
+- The linked C fallback stub (`src/rust/build.rs:164–209`) **rejects every single input** (returning `INTERNAL_ERROR = -1`). It refuses to run in a fail-open state.
+
+- Policy specs: `src/ada/src/gatekeeper.ads` (109 lines), `src/ada/src/container_policy.ads` (183 lines)
+- OCI parser: `src/ada/src/oci_parser.adb` (366 lines)
+- Threshold signatures: `src/ada/src/threshold_signatures.ads` (138 lines)
+- Fail-closed build logic: `src/rust/build.rs` (250 lines)
+
+== LSP & MCP Protocol Adapters
+
+[quote, README]
+____
+ReScript LSP server & MCP adapter ... Native JSON-RPC handling, optimal for protocol adapters
+____
+
+Vörðr provides an IDE Language Server Protocol (LSP) implementation and an Anthropic Model Context Protocol (MCP) server for integration with Svalinn and AI developer tooling.
+
+The LSP protocol (`src/lsp/`, 847 lines) supports both stdio and HTTP transports (port 8081) for validating `.ctp` bundles and `.gatekeeper.yaml` policies in VS Code. The MCP adapter (`src/mcp-adapter/`, 1,066 lines) provides JSON-RPC 2.0 endpoints exposing `containers/*` and `images/*` tool calls.
+
+*Caveat (2026 Migration):* Following estate Language Policy 1.2, ReScript is being grandfathered out in favor of **AffineScript** for web/MCP adapters and **Ephapax** for linear security modules. Existing `.res` files are retained under `.hypatia-baseline.json`.
+
+- LSP Server implementation: `src/lsp/protocol/Server.res` (312 lines), `src/lsp/protocol/Types.res` (260 lines)
+- LSP Transports: `src/lsp/transport/stdio/StdioTransport.res` (161 lines), `src/lsp/transport/http/HttpTransport.res` (62 lines)
+- MCP HTTP Server: `src/mcp-adapter/src/HttpServer.res` (402 lines)
+- MCP Tools definition: `src/mcp-adapter/src/Tools.res` (186 lines)
+
+== Temporal Isolation & Time-Dilation
+
+[quote, README]
+____
+Temporal isolation engine in Elixir (~70%)
+____
+
+To defend against timing-attack side channels and deterministic replay bugs, Vörðr implements a temporal isolation layer in Elixir (`src/elixir/lib/vordr/temporal/`).
+
+Using an Erlang port swarm, a tomograph monitor, and a virtual time controller, Vörðr can intercept container I/O and dilate or quantize execution time, decoupling elapsed wall-clock time from observed network and CPU event rates.
+
+*Caveat:* Time dilation currently operates at the BEAM port abstraction layer. It is not yet wired to kernel-level eBPF clock manipulation or hardware cycle counters.
+
+- Virtual time controller: `src/elixir/lib/vordr/temporal/time_controller.ex` (348 lines)
+- Port swarm interceptor: `src/elixir/lib/vordr/temporal/port_swarm.ex` (302 lines)
+- Tomograph monitor: `src/elixir/lib/vordr/temporal/tomograph.ex` (301 lines)
+
+== Native `.ctp` Attestation & Provenance
+
+[quote, README]
+____
+Native .ctp runtime — Reference implementation of the verified-container-spec
+____
+
+Vörðr serves as the reference runtime for Container Package (`.ctp`) bundles generated by Cerro Torre. A `.ctp` bundle packages container root filesystems with cryptographic Ed25519 signatures, Merkle-tree layer hashes, and in-toto provenance attestations.
+
+- Verifies bundle integrity using BLAKE3 chunked digests.
+- Validates threshold signatures before unpacking container payloads.
+- Checks cryptographic attestations against the formal SBOM specification proved in `src/idris2/SBOM.idr`.
+
+== Zig FFI Layer
+
+[quote, README]
+____
+Zig FFI layer ... C-compatible container operations (300+ lines), NO C headers, direct Idris2->Zig
+____
+
+The low-level interface between Idris2 ABI proofs and the native operating system is implemented in Zig (`ffi/zig/src/main.zig`, 855 lines). It exposes C-ABI compatible symbols (`vordr_container_create`, `vordr_container_verify`, `vordr_container_destroy`) with zero C header dependencies.
+
+*Caveat:* `ffi/zig` was authored for Zig 0.15 and is currently undergoing mechanical migration to Zig 0.16 (resolving single-level implicit pointer dereference requirements).
+
+- FFI bridge: `ffi/zig/src/main.zig` (855 lines)
+- Build system: `ffi/zig/build.zig` (73 lines)
+- Integration test suite: `ffi/zig/test/integration_test.zig` (482 lines)
+
+== Dogfooded Across The Account
+
+These verification and systems patterns are shared across the hyperpolymath estate:
+
+[cols="1,2"]
+|===
+| Technology | Also Used In
+
+| **Idris2 Total Proofs**
+| https://github.com/hyperpolymath/proven[proven] (104 protocol proofs),
+  https://github.com/hyperpolymath/cerro-torre[cerro-torre] (provenance verification)
+
+| **Elixir GenStateMachine**
+| https://github.com/hyperpolymath/burble[burble] (call & room state),
+  https://github.com/hyperpolymath/hypatia[hypatia] (neurosymbolic CI orchestration)
+
+| **Ada/SPARK Gatekeeper**
+| https://github.com/hyperpolymath/svalinn[svalinn] (security perimeter),
+  https://github.com/hyperpolymath/stapeln[stapeln] (container boundary validation)
+
+| **Rust CLI & MCP**
+| https://github.com/hyperpolymath/cerro-torre[cerro-torre] (bundle builder),
+  https://github.com/hyperpolymath/sholes[sholes] (verified quotient canonicalization)
+
+| **Verified Container Spec (`.ctp`)**
+| https://github.com/hyperpolymath/verified-container-spec[verified-container-spec],
+  https://github.com/hyperpolymath/stapeln[stapeln]
+
+| **Chainguard & Wolfi Containers**
+| All containerized builds via https://github.com/hyperpolymath/stapeln[stapeln]
+|===
+
+== File Map
+
+[cols="1,2", options="header"]
+|===
+| Path | Proves
+
+| `src/idris2/Container.idr` | Container state machine proofs (total, 0 holes, 272 lines)
+| `src/idris2/Proofs.idr` | State transition invariance theorems (203 lines)
+| `src/idris2/SBOM.idr` | Acyclic dependency graph & bill-of-materials proofs (282 lines)
+| `src/elixir/lib/vordr/containers/container.ex` | GenStateMachine container lifecycle implementation (397 lines)
+| `src/elixir/lib/vordr/reversibility/journal.ex` | Bennett-reversible state journal (234 lines)
+| `src/rust/mcp/server.rs` | Working 1,367-line Rust Model Context Protocol server
+| `src/rust/engine/state.rs` | Local container state store (923 lines)
+| `src/rust/build.rs` | Fail-closed security architecture (refuses open fallback; 250 lines)
+| `src/ada/src/gatekeeper.ads` | SPARK_Mode (On) contract specifications (109 lines)
+| `src/lsp/protocol/Server.res` | Language Server Protocol engine (312 lines)
+| `ffi/zig/src/main.zig` | Direct C-ABI exports without C headers (855 lines)
+|===

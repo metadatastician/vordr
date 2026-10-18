@@ -1,54 +1,128 @@
-# SPDX-License-Identifier: MPL-2.0
-# RSR-compliant .gitattributes
+# SPDX-License-Identifier: MPL-2.0 (code)
+# SPDX-License-Identifier: CC-BY-SA-4.0 (prose)
+# RSR-compliant .gitattributes for Vörðr
 
 * text=auto eol=lf
 
-# Source
-*.rs    text eol=lf diff=rust
-*.ex    text eol=lf diff=elixir
-*.exs   text eol=lf diff=elixir
-*.jl    text eol=lf
-*.res   text eol=lf
-*.resi  text eol=lf
-*.ada   text eol=lf diff=ada
-*.adb   text eol=lf diff=ada
-*.ads   text eol=lf diff=ada
-*.hs    text eol=lf
-*.chpl  text eol=lf
-*.scm   text eol=lf
-*.ncl   text eol=lf
-*.nix   text eol=lf
+# --- Source ----------------------------------------------------------------
+# Systems & Performance
+*.rs        text eol=lf diff=rust
+*.go        text eol=lf diff=golang
+*.zig       text eol=lf
+*.c         text eol=lf diff=cpp
+*.h         text eol=lf diff=cpp
 
-# Docs
-*.md    text eol=lf diff=markdown
-*.adoc  text eol=lf
-*.txt   text eol=lf
+# Formal Verification & Dependent Types
+*.idr       text eol=lf linguist-language=Idris
+*.ipkg      text eol=lf linguist-language=Idris
+*.v         text eol=lf linguist-language=Coq
+*.agda      text eol=lf linguist-language=Agda
+*.lagda     text eol=lf linguist-language=Agda
 
-# Data
-*.json  text eol=lf
-*.yaml  text eol=lf
-*.yml   text eol=lf
-*.toml  text eol=lf
+# Ada / SPARK
+*.ada       text eol=lf diff=ada
+*.adb       text eol=lf diff=ada
+*.ads       text eol=lf diff=ada
+*.gpr       text eol=lf diff=ada
 
-# Config
-.gitignore     text eol=lf
-.gitattributes text eol=lf
-justfile       text eol=lf
-Makefile       text eol=lf
-Containerfile  text eol=lf
+# BEAM Ecosystem (Elixir / Erlang)
+*.ex        text eol=lf diff=elixir
+*.exs       text eol=lf diff=elixir
+*.erl       text eol=lf
+*.hrl       text eol=lf
 
-# Scripts
-*.sh   text eol=lf
+# First-Party Estate Languages (AffineScript & Ephapax)
+# Syntax surface mapped to TypeScript for syntax highlighting, diffs, and AI tokenizers.
+*.affine    text eol=lf linguist-language=TypeScript diff=typescript
+*.afs       text eol=lf linguist-language=TypeScript diff=typescript
+*.eph       text eol=lf diff=rust
 
-# Binary
-*.png   binary
-*.jpg   binary
-*.gif   binary
-*.pdf   binary
-*.woff2 binary
-*.zip   binary
-*.gz    binary
+# Research PLs & Config
+*.scm       text eol=lf diff=scheme linguist-language=Scheme
+*.jl        text eol=lf
+*.hs        text eol=lf
+*.chpl      text eol=lf
+*.ncl       text eol=lf
+*.k9        text eol=lf linguist-language=Nickel
 
-# Lock files
-Cargo.lock  text eol=lf -diff
-flake.lock  text eol=lf -diff
+# Web & Scripting
+*.js        text eol=lf
+*.ts        text eol=lf
+*.sh        text eol=lf diff=bash
+*.bash      text eol=lf diff=bash
+
+# Windows host scripts
+*.bat       text eol=crlf
+*.cmd       text eol=crlf
+*.ps1       text eol=crlf
+
+# --- Docs ------------------------------------------------------------------
+*.md        text eol=lf diff=markdown
+*.adoc      text eol=lf
+*.txt       text eol=lf
+*.tex       text eol=lf diff=tex
+*.bib       text eol=lf diff=bibtex
+
+# --- Data / Config ---------------------------------------------------------
+*.json      text eol=lf
+*.jsonl     text eol=lf
+*.yaml      text eol=lf
+*.yml       text eol=lf
+*.toml      text eol=lf
+*.svg       text eol=lf
+*.csv       text eol=lf
+*.html      text eol=lf diff=html
+*.css       text eol=lf diff=css
+
+# --- Repo Control Files ----------------------------------------------------
+.gitignore        text eol=lf
+.gitattributes    text eol=lf
+.editorconfig     text eol=lf
+.tool-versions    text eol=lf
+mise.toml         text eol=lf
+[Jj]ustfile       text eol=lf
+*.just            text eol=lf
+[Mm]ustfile       text eol=lf
+Containerfile     text eol=lf
+Dockerfile        text eol=lf
+
+# --- Binary ----------------------------------------------------------------
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.webp      binary
+*.ico       binary
+*.pdf       binary
+*.woff      binary
+*.woff2     binary
+*.ttf       binary
+*.zip       binary
+*.tar       binary
+*.gz        binary
+*.xz        binary
+*.wasm      binary
+*.rlib      binary
+*.beam      binary
+*.so        binary
+*.dylib     binary
+*.dll       binary
+
+# --- Generated Lockfiles: No Diff Noise, Excluded from Stats ---------------
+Cargo.lock        text eol=lf -diff linguist-generated=true
+mix.lock          text eol=lf -diff linguist-generated=true
+mise.lock         text eol=lf -diff linguist-generated=true
+deno.lock         text eol=lf -diff linguist-generated=true
+bun.lock          text eol=lf -diff linguist-generated=true
+bun.lockb         binary -diff linguist-generated=true
+pnpm-lock.yaml    text eol=lf -diff linguist-generated=true
+package-lock.json text eol=lf -diff linguist-generated=true
+
+# --- Legacy / Retired Toolchains (Byte hygiene only) -----------------------
+# ReScript retired (LANGUAGE-POLICY 1.2); Nix retired 2026-06-01.
+*.res             text eol=lf
+*.resi            text eol=lf
+**/*.res          linguist-detectable=false
+**/*.resi         linguist-detectable=false
+*.nix             text eol=lf
+flake.lock        text eol=lf -diff linguist-generated=true
