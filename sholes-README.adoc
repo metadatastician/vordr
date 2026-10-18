@@ -1,0 +1,229 @@
+// SPDX-License-Identifier: CC-BY-SA-4.0
+= sholes
+:toc: auto
+:toclevels: 3
+:icons: font
+:source-highlighter: rouge
+:idprefix:
+:idseparator: -
+
+image:https://img.shields.io/badge/License-MPL--2.0-indigo.svg[License: MPL-2.0,link="https://github.com/hyperpolymath/sholes/blob/main/LICENSE"]
+image:https://img.shields.io/badge/standard-RSR--compliant-green.svg[RSR Compliant]
+image:https://img.shields.io/badge/verified-Agda%20%7C%20Creusot-9f55ff[Formal Verification,link="https://github.com/hyperpolymath/sholes/tree/main/proofs"]
+image:https://img.shields.io/badge/status-active-brightgreen.svg[Status]
+
+**Sick of CRLF breaking your git diffs, shebangs, and CI caches? A formally verified quotient layer that ends the 50-year typewriter war forever. Agda proofs + verified Rust filter.**
+
+'''
+
+== Table of Contents
+
+- <<what-this-is,What this is>>
+- <<the-historical-tragedy,The Historical Tragedy (1868–Present)>>
+- <<the-mathematical-fix,The Mathematical Solution>>
+- <<quick-start,Quick start>>
+- <<ai-install,AI-Assisted Installation (Recommended)>>
+  - <<just-say-it,Just say it>>
+  - <<what-you-will-be-asked,What you will be asked>>
+  - <<privacy-and-security,Privacy and security>>
+  - <<minting-without-a-terminal,Minting without a terminal>>
+  - <<troubleshooting,Troubleshooting>>
+- <<what-you-get,What you get>>
+- <<repository-map,Repository map>>
+- <<where-to-go-next,Where to go next>>
+- <<licence,Licence>>
+
+'''
+
+[#what-this-is]
+== What this is
+
+**sholes** is a formally verified bidirectional canonicalization engine for content-addressed storage (Git, IPFS, hermetic build systems, and container mounts).
+
+It neutralizes line-ending discrepancies (`LF` vs `CRLF`) at the storage boundary using **algebraic quotient types mechanized in Agda** (with exported proof objects for **Lean 4** and **Coq/Rocq**) and a **zero-allocation, Creusot-verified streaming Rust engine**.
+
+Instead of relying on fragile regexes, error-prone `core.autocrlf` configurations, or 200-line `.gitattributes` files, **sholes** proves that all platform representations factor through a unique canonical projection, rendering line-ending corruption mathematically impossible.
+
+[#the-historical-tragedy]
+=== The Historical Tragedy (1868–Present)
+
+In 1868, **Christopher Latham Sholes** patented the practical typewriter. When typists reached the right margin, two distinct mechanical events occurred:
+
+1. A physical lever was slapped to slide the heavy carriage back to the left margin (**Carriage Return**, `CR`, `\r`, `0x0D`).
+2. A rubber cylinder rolled the paper up by one line (**Line Feed**, `LF`, `\n`, `0x0A`).
+
+A century later, the early computing split cemented this mechanical legacy:
+
+* **Unix (1970s)**: Dennis Ritchie and Ken Thompson dropped the redundant byte, standardizing on **`LF`**.
+* **CP/M and MS-DOS**: Retained teleprinter compatibility with the two-byte sequence **`CRLF`**.
+
+Because Git hashes raw byte streams rather than semantic contents, humanity has spent fifty years paying for this split with:
+
+* Phantom 40,000-line Git diffs when files are opened across OS boundaries.
+* Wiped `git blame` histories.
+* Linux containers crashing because shebangs search for `/usr/bin/env bash\r`.
+* Poisoned cryptographic build caches in Nix, Bazel, and IPFS.
+
+[#the-mathematical-fix]
+=== The Mathematical Solution
+
+We do not negotiate with ASCII `0x0D`. **sholes** treats content addressing as a quotient over an equivalence relation on byte streams:
+
+[stem]
+++++
+\mathcal{Q} = \Sigma^* / \sim_{\mathrm{LE}}
+++++
+
+1. **Mechanized Proofs (Agda / Lean 4 / Coq)**:
+   * **Idempotence**: `canon(canon(s)) = canon(s)`
+   * **Equivalence Invariance**: `s1 ~ s2 => canon(s1) = canon(s2)`
+   * **Cryptographic Coherence**: `s1 ~ s2 => H(canon(s1)) = H(canon(s2))`
+   * **Binary Preservation**: `is_binary(s) => canon(s) = s`
+   * **Well-Behaved Symmetric Lens**: Satisfies the categorical `GetPut` and `PutGet` laws for environment-directed routing.
+2. **Verified Systems Engine (Rust + Creusot)**:
+   * Zero-copy, bounded-buffer streaming filter.
+   * Native Git packet-line protocol driver (`filter.clean` / `filter.smudge`).
+   * Optional FUSE/9P virtual filesystem layer for cross-OS transparent checkouts.
+
+'''
+
+[#quick-start]
+== Quick start
+
+[source,bash]
+----
+# 1. Install via cargo or pre-built binary
+cargo install sholes-cli
+
+# 2. Register sholes globally as a Git filter driver
+sholes init --global
+
+# 3. Verify repository hygiene and check for line-ending divergence
+sholes audit .
+----
+
+To work on this repository directly:
+
+[source,bash]
+----
+# 1. Inspect tasks via Just
+just
+
+# 2. Verify formal proofs (Agda / Coq)
+just verify-proofs
+
+# 3. Run Creusot verification conditions on Rust engine
+just verify-code
+
+# 4. Run test suites and differential fuzzing against GNU dos2unix
+just test
+----
+
+'''
+
+[#ai-install]
+== AI-Assisted Installation (Recommended)
+
+[#just-say-it]
+=== Just say it
+
+Say this to any AI assistant that can read a URL and run commands (or give you commands to paste):
+
+[source,text]
+----
+Set up sholes from https://github.com/hyperpolymath/sholes
+----
+
+The URL leads the assistant to `docs/AI_INSTALLATION_GUIDE.adoc`, the complete step-by-step recipe. The assistant checks your system, installs prerequisites with `mise`, checks the proofs, builds the verified filter, and runs `just doctor`.
+
+[#what-you-will-be-asked]
+=== What you will be asked
+
+1. Your operating system (Linux, macOS, or Windows via WSL2).
+2. The installation scope (global Git filter or per-repository).
+3. To confirm the privacy notice below.
+
+[#privacy-and-security]
+=== Privacy and security
+
+[IMPORTANT]
+====
+Installing and running **sholes** operates entirely offline and locally on your machine. No source code, hashes, paths, or telemetry are ever transmitted to any remote network endpoint.
+====
+
+[#minting-without-a-terminal]
+=== Minting without a terminal
+
+Agents and CI can configure non-interactively: set `RSR_NON_INTERACTIVE=1` and pass required environment variables. See `build/just/repo-init.just` for all automation switches.
+
+[#troubleshooting]
+=== Troubleshooting
+
+Run `just doctor`; each `FAIL` carries an actionable remediation code explained in `docs/SETUP.adoc` link:docs/SETUP.adoc#troubleshooting[§Troubleshooting], and `just heal` applies automatic fixes. Developers and maintainers can warm up an AI with `just ai-warmup dev` or `just ai-warmup maintainer`.
+
+'''
+
+[#what-you-get]
+== What you get
+
+* **Mechanized Proof Core (`proofs/`)** — Agda formalization of quotient string normalization, with verified proof exports in Lean 4 and Coq/Rocq.
+* **Verified Rust Engine (`crates/sholes-core/`)** — Creusot-annotated algorithms proving memory safety, non-corruption of binary streams, and canonical output invariants.
+* **Git Filter Driver (`crates/sholes-cli/`)** — High-throughput streaming CLI implementing Git filter protocol v2 (`clean` and `smudge`).
+* **Machine-Readable Metadata (`.machine_readable/descriptiles/`)** — `STATE`, `META`, `ECOSYSTEM`, `PLAYBOOK`, `AGENTIC`, `NEUROSYM`, `CLADE`, and `anchors/ANCHOR` in deed format for autonomous agents and validation tools.
+* **AI Gatekeeper Protocol** — `sholes_chora.deed` defining repository agent boundaries, capabilities, and verification gates.
+* **CI/CD & Supply Chain** — GitHub Actions for CodeQL, OpenSSF Scorecard, reproducible Guix/Stapeln builds, SBOM generation, and cryptographic provenance signing.
+
+'''
+
+[#repository-map]
+== Repository map
+
+The authoritative map is generated, so it cannot drift from the tree: link:docs/architecture/REPOSITORY-MAP.adoc[docs/architecture/REPOSITORY-MAP.adoc] (regenerate with `just repo-map`; CI fails if it is stale).
+
+The short version:
+
+[cols="1,2", options="header"]
+|===
+| Path | What lives there
+
+| `README.adoc`, `CLAUDE.md`
+| Start here — humans and AI agents respectively.
+
+| `proofs/`
+| Formal proofs in Agda, Lean 4, and Coq/Rocq.
+
+| `crates/`, `src/`, `tests/`
+| Rust source code, Creusot contracts, CLI, and integration tests.
+
+| `docs/`
+| Architecture notes, mathematical definitions, and human documentation.
+
+| `.machine_readable/`
+| Manifests, contractiles, deeds, and policies that tools and agents read.
+
+| `build/`, `Justfile`
+| Every task runs through `just`; task definitions live in `build/just/`.
+
+| `ci/`, `.github/`
+| GitHub Actions and security automation pipelines.
+|===
+
+'''
+
+[#where-to-go-next]
+== Where to go next
+
+* link:docs/architecture/REPOSITORY-MAP.adoc[The repository map] — generated; what every directory is for.
+* link:docs/EXPLAINME.adoc[EXPLAINME] — the engineering deep-dive: how quotient projection works under the hood.
+* link:docs/AFFIRMATION.adoc[AFFIRMATION] — the dated, signed honesty snapshot of the repo's true state.
+* link:docs/AUDIT.adoc[AUDIT] — the release audit gate and verification status.
+* link:docs/AI_INSTALLATION_GUIDE.adoc[AI installation guide] — for autonomous agents instantiating and developing this repo.
+
+'''
+
+[#licence]
+== Licence
+
+Code, configuration, and scripts are link:LICENSE[Mozilla Public License 2.0] (`MPL-2.0`); formal proofs and prose documentation are `CC-BY-SA-4.0`. Both texts live in `LICENSES/`, and per-file `SPDX-License-Identifier` headers are authoritative.
+
+Long-term attribution uses Quantum-Safe Provenance — see link:docs/legal/EXHIBIT-B-QUANTUM-SAFE.txt[the Quantum-Safe Provenance exhibit].
