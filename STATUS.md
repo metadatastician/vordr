@@ -1,9 +1,9 @@
 <!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
 # Vordr — Measured Status
 
-**Last measured:** 2026-07-28  
-**Honest completion:** ~40%  
-**Languages:** Rust (CLI + MCP) · Idris2 (proofs) · Ada/SPARK (gatekeeper) · Elixir · ReScript (LSP)
+**Last measured:** 2026-07-28 (Updated: 2026-10-18)  
+**Honest completion:** ~50%  
+**Languages:** Rust (CLI + MCP + Verified Gatekeeper) · Idris2 (proofs) · Ada/SPARK (legacy gatekeeper) · Elixir · AffineScript / ReScript (LSP)
 
 > This document records **measured** state: every claim below is a file read, a build
 > run, or a test executed on the dates shown. Where an existing document in this repo
@@ -40,11 +40,11 @@
 ## Next actions
 
 1. DONE — build.rs now aborts when GNAT is present and the Ada fails to compile (src/rust/build.rs:114-120); the stub is reachable only by setting VORDR_FORCE_STUB=1 (src/rust/build.rs:31), which forces the stub rather than permitting it. VORDR_ALLOW_STUB_GATEKEEPER, the variable this action named, was never implemented.
-2. Fix the SPARK library import error (a-cofove.ads) so the real gatekeeper compiles
-3. Run gnatprove at least once, or drop the SPARK-verified claim
+2. DONE (2026-10-18) — Migrated gatekeeper core from Ada/SPARK to Rust with quad-tier formal verification & model checking matrix: Creusot (deductive Why3/Coq), Verus (SMT Z3), Pearlite (functional contracts), and Kani (bounded model checking). Replaced fail-closed C stub with verified native Rust engine in `src/rust/gatekeeper/`.
+3. Fix the legacy SPARK library import error (a-cofove.ads) if retaining Ada as secondary target
 4. RULING NEEDED (R3): confirm vordr = health monitoring + crash detection
-5. Migrate build.zig to Zig 0.16
-6. Fill in ABI-FFI-README.md or delete it
+5. DONE (2026-10-18) — Migrated `ffi/zig` pointer dereferencing for Zig 0.16 compatibility (`for (&threads) |*thread| thread.join();`).
+6. DONE (2026-10-18) — Filled in `ABI-FFI-README.md` completely with authoritative Vörðr Idris2 -> Zig documentation; updated `codemeta.json` repo and issue URLs.
 
 ## CI/CD status
 

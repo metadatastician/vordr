@@ -5,10 +5,10 @@
   "identifier": "vordr",
   "description": "Formally verified container orchestration and verification system with dependent types, eBPF monitoring, and threshold authorization",
   "applicationCategory": "Security",
-  "codeRepository": "https://gitlab.com/hyperpolymath/vordr",
+  "codeRepository": "https://github.com/metadatastician/vordr",
   "dateCreated": "2025-01-15",
-  "dateModified": "2026-01-19",
-  "license": "https://spdx.org/licenses/PMPL-1.0-or-later.html",
+  "dateModified": "2026-10-18",
+  "license": "https://spdx.org/licenses/MPL-2.0.html",
   "version": "0.1.0",
   "developmentStatus": "active",
   "isPartOf": {
@@ -19,8 +19,8 @@
   "author": [
     {
       "@type": "Organization",
-      "name": "Hyperpolymath",
-      "url": "https://hyperpolymath.org"
+      "name": "metadatastician",
+      "url": "https://github.com/metadatastician"
     }
   ],
   "programmingLanguage": [
@@ -47,8 +47,8 @@
     },
     {
       "@type": "ComputerLanguage",
-      "name": "ReScript",
-      "url": "https://rescript-lang.org"
+      "name": "AffineScript",
+      "url": "https://github.com/hyperpolymath/affinescript"
     }
   ],
   "runtimePlatform": [
@@ -90,10 +90,10 @@
     }
   ],
   "relatedLink": [
-    "https://gitlab.com/hyperpolymath/svalinn",
-    "https://gitlab.com/hyperpolymath/cerro-torre"
+    "https://github.com/hyperpolymath/svalinn",
+    "https://github.com/hyperpolymath/cerro-torre"
   ],
   "readme": "README.adoc",
-  "issueTracker": "https://gitlab.com/hyperpolymath/vordr/-/issues",
-  "contIntegration": "https://gitlab.com/hyperpolymath/vordr/-/pipelines"
+  "issueTracker": "https://github.com/metadatastician/vordr/issues",
+  "contIntegration": "https://github.com/metadatastician/vordr/actions"
 }

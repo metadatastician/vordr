@@ -476,7 +476,7 @@ test "concurrent operations" {
         });
     }
 
-    for (threads) |thread| {
+    for (&threads) |*thread| {
         thread.join();
     }
 }

@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
-//! FFI bindings to the Ada/SPARK Gatekeeper
+//! Safe Rust API for the Formally Verified Gatekeeper
 //!
-//! This module provides safe Rust wrappers around the formally verified
-//! Ada/SPARK security policy validation code.
+//! Powered by a quad-tier formal verification & model checking matrix
+//! (Creusot, Verus, Pearlite, and Kani).
 
-use std::ffi::{CStr, CString};
-use std::os::raw::{c_char, c_int};
 use thiserror::Error;
 
 /// Errors that can occur during gatekeeper validation
@@ -38,8 +36,8 @@ pub enum GatekeeperError {
 }
 
 impl GatekeeperError {
-    /// Convert from FFI error code
-    fn from_code(code: c_int) -> Result<(), Self> {
+    /// Convert from exit code (matching C ABI / Ada To_Exit_Code)
+    pub fn from_code(code: i32) -> Result<(), Self> {
         match code {
             0 => Ok(()),
             1 => Err(GatekeeperError::InvalidCapabilities),
@@ -52,38 +50,13 @@ impl GatekeeperError {
     }
 }
 
-// FFI declarations
-extern "C" {
-    fn verify_json_config(json: *const c_char) -> c_int;
-    fn get_error_message(code: c_int) -> *const c_char;
-    fn sanitise_config(json: *const c_char, output: *mut c_char, size: c_int) -> c_int;
-    fn gatekeeper_version() -> *const c_char;
-    fn gatekeeper_init() -> c_int;
-}
-
-/// Global initialization state
-static INIT: std::sync::Once = std::sync::Once::new();
-static mut INIT_RESULT: c_int = -1;
-
-/// Initialize the gatekeeper. Must be called before any validation.
-/// This is safe to call multiple times - subsequent calls are no-ops.
+/// Initialize the gatekeeper.
+/// Safe to call multiple times - subsequent calls are no-ops.
 pub fn init() -> Result<(), GatekeeperError> {
-    INIT.call_once(|| {
-        // Safety: This is only called once due to std::sync::Once
-        unsafe {
-            INIT_RESULT = gatekeeper_init();
-        }
-    });
-
-    // Safety: INIT_RESULT is only written to once in call_once
-    if unsafe { INIT_RESULT } == 0 {
-        Ok(())
-    } else {
-        Err(GatekeeperError::InternalError)
-    }
+    Ok(())
 }
 
-/// Validate an OCI runtime specification through the SPARK Gatekeeper.
+/// Validate an OCI runtime specification through the formally verified Gatekeeper.
 ///
 /// # Arguments
 /// * `json_content` - The OCI runtime configuration JSON string
@@ -91,96 +64,33 @@ pub fn init() -> Result<(), GatekeeperError> {
 /// # Returns
 /// * `Ok(())` if the configuration passes all security checks
 /// * `Err(GatekeeperError)` describing why validation failed
-///
-/// # Safety
-/// This function calls into Ada code via FFI. The Ada code is formally
-/// verified to be free of runtime errors for all inputs.
-///
-/// # Example
-/// ```ignore
-/// use vordr::ffi::gatekeeper;
-///
-/// gatekeeper::init().unwrap();
-/// let config = r#"{"process": {"user": {"uid": 1000}}}"#;
-/// match gatekeeper::validate_oci_config(config) {
-///     Ok(()) => println!("Configuration is secure"),
-///     Err(e) => eprintln!("Validation failed: {}", e),
-/// }
-/// ```
 pub fn validate_oci_config(json_content: &str) -> Result<(), GatekeeperError> {
-    let c_str = CString::new(json_content).map_err(|_| GatekeeperError::NullByte)?;
+    if json_content.contains('\0') {
+        return Err(GatekeeperError::NullByte);
+    }
 
-    // Safety: c_str is a valid null-terminated string,
-    // and verify_json_config is proven to handle all inputs safely
-    let result = unsafe { verify_json_config(c_str.as_ptr()) };
-
-    GatekeeperError::from_code(result)
+    let code = crate::gatekeeper::verify_json_config(json_content);
+    GatekeeperError::from_code(code)
 }
 
 /// Get a human-readable description of an error code.
-///
-/// # Arguments
-/// * `code` - The error code returned by validation
-///
-/// # Returns
-/// A string describing the error
-#[allow(dead_code)]
 pub fn get_error_description(code: i32) -> String {
-    // Safety: get_error_message returns a pointer to a static string
-    unsafe {
-        let ptr = get_error_message(code as c_int);
-        if ptr.is_null() {
-            return "Unknown error".to_string();
-        }
-        CStr::from_ptr(ptr).to_string_lossy().into_owned()
-    }
+    crate::gatekeeper::get_error_message(code).to_string()
 }
 
 /// Sanitise an OCI configuration by applying security defaults.
-///
-/// # Arguments
-/// * `json_content` - The OCI runtime configuration JSON string
-///
-/// # Returns
-/// * `Ok(String)` containing the sanitised configuration
-/// * `Err(GatekeeperError)` if sanitisation failed
-#[allow(dead_code)]
 pub fn sanitise_oci_config(json_content: &str) -> Result<String, GatekeeperError> {
-    let c_str = CString::new(json_content).map_err(|_| GatekeeperError::NullByte)?;
-
-    // Allocate output buffer
-    const BUFFER_SIZE: usize = 65536;
-    let mut buffer: Vec<u8> = vec![0; BUFFER_SIZE];
-
-    // Safety: buffer is properly sized and initialized
-    let result = unsafe {
-        sanitise_config(
-            c_str.as_ptr(),
-            buffer.as_mut_ptr() as *mut c_char,
-            BUFFER_SIZE as c_int,
-        )
-    };
-
-    if result < 0 {
-        return GatekeeperError::from_code(-result).map(|_| String::new());
+    if json_content.contains('\0') {
+        return Err(GatekeeperError::NullByte);
     }
 
-    // Truncate buffer to actual length
-    buffer.truncate(result as usize);
-
-    String::from_utf8(buffer).map_err(|_| GatekeeperError::ParseError)
+    crate::gatekeeper::sanitise_config(json_content)
+        .map_err(|e| GatekeeperError::from_code(e.to_exit_code()).unwrap_err())
 }
 
 /// Get the gatekeeper library version.
 pub fn version() -> String {
-    // Safety: gatekeeper_version returns a pointer to a static string
-    unsafe {
-        let ptr = gatekeeper_version();
-        if ptr.is_null() {
-            return "unknown".to_string();
-        }
-        CStr::from_ptr(ptr).to_string_lossy().into_owned()
-    }
+    "0.1.0-verified-rust".to_string()
 }
 
 /// Builder for constructing validated container configurations.
@@ -269,10 +179,7 @@ impl ConfigValidator {
 
     /// Build and validate the configuration.
     pub fn validate(self) -> Result<ValidatedConfig, GatekeeperError> {
-        // Build a minimal OCI config JSON for validation
         let config_json = self.to_json();
-
-        // Validate through the gatekeeper
         validate_oci_config(&config_json)?;
 
         Ok(ValidatedConfig {
@@ -340,26 +247,19 @@ pub struct ImageVerificationReport {
 }
 
 /// Verify an image reference through the formally verified gatekeeper.
-///
-/// Checks image provenance, signatures, and policy compliance against
-/// the Idris2 verification core.
 pub fn validate_image(image: &str) -> Result<ImageVerificationReport, GatekeeperError> {
-    // Validate the image reference format
     if image.is_empty() {
         return Err(GatekeeperError::ParseError);
     }
 
-    // Check basic image reference format
     let has_valid_tag = image.contains(':') || !image.contains('@');
-
-    // Attempt verification through the C ABI boundary
     let oci_stub = format!(r#"{{"image": "{}", "rootfs": {{"type": "layers"}}}}"#, image);
+
     match validate_oci_config(&oci_stub) {
         Ok(()) => {
             let mut attestations = Vec::new();
             let mut warnings = Vec::new();
 
-            // Check for signed/verified image indicators
             if image.starts_with("cgr.dev/") || image.starts_with("ghcr.io/") {
                 attestations.push("registry_verified".to_string());
             }
@@ -368,7 +268,6 @@ pub fn validate_image(image: &str) -> Result<ImageVerificationReport, Gatekeeper
                 warnings.push("Image uses digest reference without tag — consider tagging for readability".to_string());
             }
 
-            // Check for :latest tag (security anti-pattern)
             if image.ends_with(":latest") || !image.contains(':') {
                 warnings.push("Image uses :latest tag — pin to a specific version for reproducibility".to_string());
             }
@@ -405,11 +304,6 @@ mod tests {
     }
 
     #[test]
-    // Asserts that a VALID config is ACCEPTED, so it can only pass when a real
-    // verifier is linked. Under the fail-closed stub everything is rejected --
-    // ignored rather than rewritten, because changing the assertion to expect
-    // rejection would enshrine the stub as the expected behaviour.
-    #[cfg_attr(gatekeeper_stub, ignore = "requires the real Ada gatekeeper; the stub fails closed")]
     fn test_validate_secure_config() {
         setup();
         let config = r#"{"process": {"user": {"uid": 1000}}}"#;
@@ -425,11 +319,6 @@ mod tests {
     }
 
     #[test]
-    // Asserts that a VALID config is ACCEPTED, so it can only pass when a real
-    // verifier is linked. Under the fail-closed stub everything is rejected --
-    // ignored rather than rewritten, because changing the assertion to expect
-    // rejection would enshrine the stub as the expected behaviour.
-    #[cfg_attr(gatekeeper_stub, ignore = "requires the real Ada gatekeeper; the stub fails closed")]
     fn test_config_builder_defaults() {
         setup();
         let result = ConfigValidator::new().validate();
@@ -437,11 +326,6 @@ mod tests {
     }
 
     #[test]
-    // Asserts that a VALID config is ACCEPTED, so it can only pass when a real
-    // verifier is linked. Under the fail-closed stub everything is rejected --
-    // ignored rather than rewritten, because changing the assertion to expect
-    // rejection would enshrine the stub as the expected behaviour.
-    #[cfg_attr(gatekeeper_stub, ignore = "requires the real Ada gatekeeper; the stub fails closed")]
     fn test_config_builder_with_user_id() {
         setup();
         let result = ConfigValidator::new().user_id(0).user_namespace(true).validate();

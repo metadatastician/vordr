@@ -8,6 +8,7 @@ pub mod cli;
 pub mod ebpf;
 pub mod engine;
 pub mod ffi;
+pub mod gatekeeper;
 pub mod mcp;
 pub mod network;
 pub mod registry;
