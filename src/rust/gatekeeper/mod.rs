@@ -57,6 +57,8 @@ impl Capability {
         Capability::SysAdmin,
     ];
 
+    /// Parse an ASCII case-insensitive capability name, with or without `CAP_`.
+    /// Returns `None` for names outside the supported capability set.
     pub fn from_name(name: &str) -> Option<Self> {
         let upper = name.to_ascii_uppercase();
         let stripped = upper.strip_prefix("CAP_").unwrap_or(&upper);
@@ -128,6 +130,8 @@ pub enum PrivilegeLevel {
 }
 
 impl PrivilegeLevel {
+    /// Parse a case-insensitive network mode; `host` is an alias for `admin`.
+    /// Unrecognized values select `Unprivileged`.
     pub fn from_str(s: &str) -> Self {
         match s.to_ascii_lowercase().as_str() {
             "restricted" => PrivilegeLevel::Restricted,
@@ -151,6 +155,8 @@ pub struct ContainerConfig {
 }
 
 impl Default for ContainerConfig {
+    /// Return a nonprivileged configuration with UID 1000, a user namespace,
+    /// read-only root, seccomp, no-new-privileges, and default capabilities.
     fn default() -> Self {
         Self {
             is_privileged: false,
@@ -167,6 +173,9 @@ impl Default for ContainerConfig {
 
 /// Formal Ghost Predicate: Mathematical definition of "secure"
 /// (Ported directly from Ada `function Is_Secure return Boolean with Ghost`).
+/// Privileged configurations always satisfy this predicate. Otherwise, it checks
+/// capability, UID, user namespace, and network policy; root filesystem and
+/// seccomp settings do not affect the result.
 #[inline]
 pub fn is_secure(config: &ContainerConfig) -> bool {
     config.is_privileged
@@ -193,10 +202,13 @@ pub enum ValidationResult {
 }
 
 impl ValidationResult {
+    /// Return the ABI status code: zero for success, 1–5 for policy or parse
+    /// failures, and -1 for an internal error.
     pub fn to_exit_code(self) -> i32 {
         self as i32
     }
 
+    /// Decode status codes 0–5; all other values map to `InternalError`.
     pub fn from_exit_code(code: i32) -> Self {
         match code {
             0 => ValidationResult::Valid,
@@ -210,7 +222,12 @@ impl ValidationResult {
     }
 }
 
-/// Primary validation function.
+/// Validate capability, UID, user namespace, and network policy.
+///
+/// Privileged configurations return `Valid` without checks. Otherwise, returns
+/// the first failure in this order: `SysAdmin`, root without a user namespace,
+/// then `NetAdmin` with unprivileged networking. Root filesystem and seccomp
+/// settings are not checked.
 /// POSTCONDITION: If result == Valid, then is_secure(config) == true.
 pub fn validate_configuration(config: &ContainerConfig) -> ValidationResult {
     if config.is_privileged {
@@ -244,7 +261,8 @@ pub fn is_valid_configuration(config: &ContainerConfig) -> bool {
     validate_configuration(config) == ValidationResult::Valid
 }
 
-/// Apply default security hardening.
+/// Remove `SysAdmin`, enable a user namespace for root, and remove `NetAdmin`
+/// when networking is unprivileged. Privileged configurations are unchanged.
 /// POSTCONDITION: is_secure(config) == true.
 pub fn apply_security_defaults(config: &mut ContainerConfig) {
     if !config.is_privileged {
@@ -267,6 +285,7 @@ pub fn apply_security_defaults(config: &mut ContainerConfig) {
 }
 
 /// Human-readable error description matching Ada / C stub.
+/// Codes outside 0–5 return the internal-error description.
 pub fn get_error_message(code: i32) -> &'static str {
     match code {
         0 => "Configuration is valid and secure",
@@ -279,7 +298,18 @@ pub fn get_error_message(code: i32) -> &'static str {
     }
 }
 
-/// Parse OCI runtime configuration JSON into ContainerConfig.
+/// Parse supported OCI fields over [`ContainerConfig::default`] without policy validation.
+///
+/// Missing or incorrectly typed fields retain their defaults. A bounding
+/// capability array replaces the default set, ignoring unknown names and
+/// non-string entries. A namespace array enables the user namespace only if
+/// it contains an entry with type `user`. UID values accepted as `u64` are
+/// truncated to `u32`. The `linux.network_mode` extension uses
+/// [`PrivilegeLevel::from_str`]. Privileged mode and seccomp are not read.
+///
+/// # Errors
+/// Returns `ParseError` for empty or malformed JSON. Any valid JSON value is
+/// accepted, even if it is not an OCI object.
 pub fn parse_oci_json(json_str: &str) -> Result<ContainerConfig, ValidationResult> {
     if json_str.trim().is_empty() {
         return Err(ValidationResult::ParseError);
@@ -346,7 +376,9 @@ pub fn parse_oci_json(json_str: &str) -> Result<ContainerConfig, ValidationResul
     Ok(config)
 }
 
-/// High-level JSON verification matching the FFI entrypoint.
+/// Parse and validate JSON, returning zero on success or an ABI failure code.
+/// Parse failures return 5; policy failures use [`ValidationResult::to_exit_code`].
+/// Missing or unsupported fields follow [`parse_oci_json`]'s defaulting rules.
 pub fn verify_json_config(json_str: &str) -> i32 {
     match parse_oci_json(json_str) {
         Ok(config) => validate_configuration(&config).to_exit_code(),
@@ -354,7 +386,15 @@ pub fn verify_json_config(json_str: &str) -> i32 {
     }
 }
 
-/// Sanitise an OCI configuration by enforcing security defaults.
+/// Sanitize parsed OCI fields by applying security defaults and returning JSON.
+///
+/// The output contains only the UID, no-new-privileges flag, root read-only flag,
+/// user namespace, and network mode. Capabilities and all other input fields
+/// are omitted; non-user namespaces are not preserved.
+///
+/// # Errors
+/// Propagates `ParseError` from [`parse_oci_json`]. Serialization errors map to
+/// `InternalError`.
 pub fn sanitise_config(json_str: &str) -> Result<String, ValidationResult> {
     let mut config = parse_oci_json(json_str)?;
     apply_security_defaults(&mut config);
