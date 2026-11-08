@@ -56,7 +56,7 @@ defmodule Vordr.MixProject do
   defp package do
     [
       name: "vordr",
-      licenses: ["PMPL-1.0-or-later"],
+      licenses: ["MPL-2.0"],
       links: %{
         "GitLab" => "https://gitlab.com/hyperpolymath/vordr",
         "GitHub" => "https://github.com/hyperpolymath/vordr"

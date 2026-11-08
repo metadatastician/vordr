@@ -8,7 +8,7 @@ version = "0.1.0"
 edition = "2021"
 authors = ["Svalinn Project <team@svalinnproject.org>"]
 description = "High-assurance daemonless container engine with formally verified security"
-license = "PMPL-1.0-or-later"
+license = "MPL-2.0"
 repository = "https://github.com/svalinnproject/svalinn"
 homepage = "https://svalinnproject.org"
 readme = "README.md"
@@ -16,6 +16,9 @@ keywords = ["container", "oci", "security", "formal-verification", "spark"]
 categories = ["command-line-utilities", "virtualization"]
 
 [dependencies]
+# Optional Creusot contracts (Pearlite specification language).
+creusot-contracts = { version = "0.8", optional = true }
+
 # OCI Specification
 oci-spec = "0.7"
 
@@ -90,6 +93,7 @@ aya-log = { version = "0.2", optional = true }
 
 [features]
 default = []
+creusot = ["dep:creusot-contracts"]
 bpf = ["aya", "aya-log"]
 full = ["bpf"]
 

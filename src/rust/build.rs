@@ -18,6 +18,7 @@ fn main() {
     // Declared on EVERY path so `cfg(gatekeeper_stub)` is always a known cfg,
     // even when the real Ada library is what gets linked.
     println!("cargo:rustc-check-cfg=cfg(gatekeeper_stub)");
+    println!("cargo:rustc-check-cfg=cfg(creusot)");
 
     // Ada/SPARK code is in ../ada relative to the Rust crate
     let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
