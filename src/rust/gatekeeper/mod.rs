@@ -1,15 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Formally Verified Gatekeeper Core
-//!
-//! Replaces the Ada/SPARK gatekeeper with a native verified Rust engine,
-//! certified through a quad-tier formal verification & model checking matrix:
-//! - **Creusot** (Deductive verification via Why3 / Coq)
-//! - **Verus** (SMT-based deductive verification via Z3)
-//! - **Pearlite** (Functional specification contracts)
-//! - **Kani** (Bounded model checking)
+//! Native Rust gatekeeper with runtime policy tests and verification scaffolding.
+//! Kani harnesses and Creusot contracts require their respective verification tools.
+//! Pearlite is Creusot's contract language; the local Pearlite and Verus modules
+//! are unverified specification sketches.
 
 pub mod creusot;
-pub mod kani;
+#[path = "kani.rs"]
+pub mod kani_proofs;
 pub mod pearlite;
 pub mod verus;
 
@@ -56,6 +53,29 @@ impl Capability {
         Capability::NetAdmin,
         Capability::SysAdmin,
     ];
+
+    /// Canonical OCI capability name, inverse of `from_name`.
+    pub fn name(self) -> &'static str {
+        const NAMES: [&str; 16] = [
+            "CAP_CHOWN",
+            "CAP_DAC_OVERRIDE",
+            "CAP_FSETID",
+            "CAP_FOWNER",
+            "CAP_MKNOD",
+            "CAP_NET_RAW",
+            "CAP_SETGID",
+            "CAP_SETUID",
+            "CAP_SETFCAP",
+            "CAP_SETPCAP",
+            "CAP_NET_BIND_SERVICE",
+            "CAP_SYS_CHROOT",
+            "CAP_KILL",
+            "CAP_AUDIT_WRITE",
+            "CAP_NET_ADMIN",
+            "CAP_SYS_ADMIN",
+        ];
+        NAMES[self as usize]
+    }
 
     pub fn from_name(name: &str) -> Option<Self> {
         let upper = name.to_ascii_uppercase();
@@ -174,9 +194,7 @@ pub fn is_secure(config: &ContainerConfig) -> bool {
             && (config.user_id > 0 || config.user_namespace)
             && (!config.capabilities.has(Capability::NetAdmin)
                 || config.network_mode != PrivilegeLevel::Unprivileged)
-            && (config.user_id > 0
-                || config.no_new_privileges
-                || config.user_namespace))
+            && (config.user_id > 0 || config.no_new_privileges || config.user_namespace))
 }
 
 /// Validation result codes matching C ABI / Ada To_Exit_Code.
@@ -212,6 +230,7 @@ impl ValidationResult {
 
 /// Primary validation function.
 /// POSTCONDITION: If result == Valid, then is_secure(config) == true.
+#[cfg_attr(feature = "creusot", creusot_contracts::macros::ensures(matches!(result, ValidationResult::Valid) ==> creusot::spec_is_secure(*config)))]
 pub fn validate_configuration(config: &ContainerConfig) -> ValidationResult {
     if config.is_privileged {
         return ValidationResult::Valid;
@@ -246,6 +265,7 @@ pub fn is_valid_configuration(config: &ContainerConfig) -> bool {
 
 /// Apply default security hardening.
 /// POSTCONDITION: is_secure(config) == true.
+#[cfg_attr(feature = "creusot", creusot_contracts::macros::ensures(creusot::spec_is_secure(^config)))]
 pub fn apply_security_defaults(config: &mut ContainerConfig) {
     if !config.is_privileged {
         config.capabilities.remove(Capability::SysAdmin);
@@ -279,70 +299,86 @@ pub fn get_error_message(code: i32) -> &'static str {
     }
 }
 
-/// Parse OCI runtime configuration JSON into ContainerConfig.
+/// Parse OCI security fields. `process.user.uid` is required. Optional fields
+/// default to no capabilities, no user namespace, no privilege barrier, a writable
+/// root, and unprivileged networking. Present malformed values fail closed.
 pub fn parse_oci_json(json_str: &str) -> Result<ContainerConfig, ValidationResult> {
-    if json_str.trim().is_empty() {
-        return Err(ValidationResult::ParseError);
+    let val = serde_json::from_str(json_str).map_err(|_| ValidationResult::ParseError)?;
+    parse_oci_value(&val)
+}
+
+fn parse_oci_value(val: &serde_json::Value) -> Result<ContainerConfig, ValidationResult> {
+    use ValidationResult::ParseError;
+    let object = val.as_object().ok_or(ParseError)?;
+    let process = object
+        .get("process")
+        .and_then(|v| v.as_object())
+        .ok_or(ParseError)?;
+    let user = process
+        .get("user")
+        .and_then(|v| v.as_object())
+        .ok_or(ParseError)?;
+    let uid = user.get("uid").and_then(|v| v.as_u64()).ok_or(ParseError)?;
+    let mut config = ContainerConfig {
+        user_id: u32::try_from(uid).map_err(|_| ParseError)?,
+        capabilities: CapabilitySet::EMPTY,
+        user_namespace: false,
+        no_new_privileges: false,
+        root_read_only: false,
+        seccomp_enabled: false,
+        ..ContainerConfig::default()
+    };
+    if let Some(value) = process.get("noNewPrivileges") {
+        config.no_new_privileges = value.as_bool().ok_or(ParseError)?;
     }
-
-    let val: serde_json::Value = serde_json::from_str(json_str)
-        .map_err(|_| ValidationResult::ParseError)?;
-
-    let mut config = ContainerConfig::default();
-
-    // 1. Process block
-    if let Some(process) = val.get("process") {
-        if let Some(user) = process.get("user") {
-            if let Some(uid) = user.get("uid").and_then(|u| u.as_u64()) {
-                config.user_id = uid as u32;
+    if let Some(value) = process.get("capabilities") {
+        let sets = value.as_object().ok_or(ParseError)?;
+        for (name, value) in sets {
+            if ![
+                "bounding",
+                "effective",
+                "permitted",
+                "inheritable",
+                "ambient",
+            ]
+            .contains(&name.as_str())
+            {
+                return Err(ParseError);
+            }
+            for entry in value.as_array().ok_or(ParseError)? {
+                let cap =
+                    Capability::from_name(entry.as_str().ok_or(ParseError)?).ok_or(ParseError)?;
+                config.capabilities.insert(cap);
             }
         }
-
-        if let Some(no_new_priv) = process.get("noNewPrivileges").and_then(|n| n.as_bool()) {
-            config.no_new_privileges = no_new_priv;
+    }
+    if let Some(root) = object.get("root") {
+        let root = root.as_object().ok_or(ParseError)?;
+        if let Some(value) = root.get("readonly") {
+            config.root_read_only = value.as_bool().ok_or(ParseError)?;
         }
-
-        if let Some(caps) = process.get("capabilities") {
-            if let Some(bounding) = caps.get("bounding").and_then(|b| b.as_array()) {
-                let mut set = CapabilitySet::EMPTY;
-                for c in bounding {
-                    if let Some(s) = c.as_str() {
-                        if let Some(cap) = Capability::from_name(s) {
-                            set.insert(cap);
-                        }
-                    }
+    }
+    if let Some(linux) = object.get("linux") {
+        let linux = linux.as_object().ok_or(ParseError)?;
+        if let Some(value) = linux.get("namespaces") {
+            for ns in value.as_array().ok_or(ParseError)? {
+                let ns = ns.as_object().ok_or(ParseError)?;
+                let kind = ns.get("type").and_then(|v| v.as_str()).ok_or(ParseError)?;
+                if let Some(path) = ns.get("path") {
+                    path.as_str().ok_or(ParseError)?;
                 }
-                config.capabilities = set;
+                config.user_namespace |= kind == "user";
             }
         }
-    }
-
-    // 2. Root block
-    if let Some(root) = val.get("root") {
-        if let Some(ro) = root.get("readonly").and_then(|r| r.as_bool()) {
-            config.root_read_only = ro;
+        if let Some(value) = linux.get("network_mode") {
+            config.network_mode = match value.as_str().ok_or(ParseError)? {
+                "unprivileged" => PrivilegeLevel::Unprivileged,
+                "restricted" => PrivilegeLevel::Restricted,
+                "admin" | "host" => PrivilegeLevel::Admin,
+                _ => return Err(ParseError),
+            };
         }
     }
-
-    // 3. Linux block
-    if let Some(linux) = val.get("linux") {
-        if let Some(namespaces) = linux.get("namespaces").and_then(|ns| ns.as_array()) {
-            let mut has_user_ns = false;
-            for ns in namespaces {
-                if let Some(t) = ns.get("type").and_then(|t| t.as_str()) {
-                    if t == "user" {
-                        has_user_ns = true;
-                    }
-                }
-            }
-            config.user_namespace = has_user_ns;
-        }
-
-        if let Some(net_mode) = linux.get("network_mode").and_then(|m| m.as_str()) {
-            config.network_mode = PrivilegeLevel::from_str(net_mode);
-        }
-    }
-
     Ok(config)
 }
 
@@ -356,37 +392,149 @@ pub fn verify_json_config(json_str: &str) -> i32 {
 
 /// Sanitise an OCI configuration by enforcing security defaults.
 pub fn sanitise_config(json_str: &str) -> Result<String, ValidationResult> {
-    let mut config = parse_oci_json(json_str)?;
+    let mut value: serde_json::Value =
+        serde_json::from_str(json_str).map_err(|_| ValidationResult::ParseError)?;
+    let mut config = parse_oci_value(&value)?;
     apply_security_defaults(&mut config);
-
-    let sanitised = serde_json::json!({
-        "process": {
-            "user": { "uid": config.user_id },
-            "noNewPrivileges": config.no_new_privileges
-        },
-        "root": {
-            "readonly": config.root_read_only
-        },
-        "linux": {
-            "namespaces": if config.user_namespace {
-                vec![serde_json::json!({"type": "user"})]
-            } else {
-                vec![]
-            },
-            "network_mode": match config.network_mode {
-                PrivilegeLevel::Unprivileged => "unprivileged",
-                PrivilegeLevel::Restricted => "restricted",
-                PrivilegeLevel::Admin => "admin",
-            }
+    value["process"]["noNewPrivileges"] = config.no_new_privileges.into();
+    let process = value["process"]
+        .as_object_mut()
+        .ok_or(ValidationResult::ParseError)?;
+    let caps = process
+        .entry("capabilities")
+        .or_insert_with(|| serde_json::json!({}));
+    // Preserve each set's membership, removing capabilities denied by hardening.
+    for set in caps
+        .as_object_mut()
+        .ok_or(ValidationResult::ParseError)?
+        .values_mut()
+    {
+        set.as_array_mut()
+            .ok_or(ValidationResult::ParseError)?
+            .retain(|entry| {
+                Capability::from_name(entry.as_str().unwrap_or_default())
+                    .map(|cap| config.capabilities.has(cap))
+                    .unwrap_or(false)
+            });
+    }
+    if caps.get("bounding").is_none() {
+        caps["bounding"] = serde_json::json!(Capability::ALL
+            .into_iter()
+            .filter(|cap| config.capabilities.has(*cap))
+            .map(Capability::name)
+            .collect::<Vec<_>>());
+    }
+    if config.user_namespace {
+        let object = value.as_object_mut().ok_or(ValidationResult::ParseError)?;
+        let linux = object
+            .entry("linux")
+            .or_insert_with(|| serde_json::json!({}));
+        let ns = linux
+            .as_object_mut()
+            .ok_or(ValidationResult::ParseError)?
+            .entry("namespaces")
+            .or_insert_with(|| serde_json::json!([]));
+        let ns = ns.as_array_mut().ok_or(ValidationResult::ParseError)?;
+        if !ns.iter().any(|entry| entry["type"] == "user") {
+            ns.push(serde_json::json!({"type": "user"}));
         }
-    });
-
-    serde_json::to_string(&sanitised).map_err(|_| ValidationResult::InternalError)
+    }
+    serde_json::to_string(&value).map_err(|_| ValidationResult::InternalError)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn security_json_rejects_missing_and_malformed_values() {
+        use serde_json::json;
+        assert_eq!(parse_oci_json("{}"), Err(ValidationResult::ParseError));
+        let base = json!({"process":{"user":{"uid":0}}});
+        let cfg = parse_oci_json(&base.to_string()).unwrap();
+        assert!(!cfg.user_namespace);
+        assert_eq!(
+            validate_configuration(&cfg),
+            ValidationResult::InvalidUserNamespace
+        );
+        for (pointer, invalid) in [
+            ("/process/user/uid", json!(4294967296u64)),
+            ("/process/user/uid", json!(-1)),
+            ("/process/user/uid", json!("1000")),
+            ("/process/noNewPrivileges", json!(null)),
+            ("/root/readonly", json!("true")),
+            ("/linux/network_mode", json!("typo")),
+            ("/linux/namespaces", json!(false)),
+            ("/linux/namespaces", json!([{"type":false}])),
+        ] {
+            let mut val = json!({"process":{"user":{"uid":1000},"noNewPrivileges":true},
+                "root":{"readonly":true},"linux":{"namespaces":[],"network_mode":"unprivileged"}});
+            *val.pointer_mut(pointer).unwrap() = invalid;
+            assert_eq!(
+                parse_oci_json(&val.to_string()),
+                Err(ValidationResult::ParseError),
+                "{pointer}"
+            );
+        }
+        for set in [
+            "bounding",
+            "effective",
+            "permitted",
+            "inheritable",
+            "ambient",
+        ] {
+            for invalid in [json!(["CAP_UNKNOWN"]), json!([3]), json!(null)] {
+                let val = json!({"process":{"user":{"uid":1000},"capabilities":{set:invalid}}});
+                assert_eq!(
+                    parse_oci_json(&val.to_string()),
+                    Err(ValidationResult::ParseError)
+                );
+            }
+            let val =
+                json!({"process":{"user":{"uid":1000},"capabilities":{set:["CAP_SYS_ADMIN"]}}});
+            assert_eq!(verify_json_config(&val.to_string()), 1);
+        }
+    }
+
+    #[test]
+    fn sanitisation_preserves_oci_fields_and_hardens_all_sets() {
+        use serde_json::json;
+        let input = json!({"ociVersion":"1.1.0","annotations":{"custom":"keep"},
+            "mounts":[{"destination":"/data"}],"root":{"path":"rootfs","readonly":false},
+            "process":{"user":{"uid":0,"gid":42},"args":["sh"],"env":["A=B"],
+                "capabilities":{"bounding":["CAP_SYS_ADMIN","CAP_CHOWN"],
+                    "effective":["CAP_NET_ADMIN"],"permitted":["CAP_SYS_ADMIN"],
+                    "ambient":["CAP_NET_ADMIN"],"inheritable":["CAP_CHOWN"]}},
+            "linux":{"namespaces":[{"type":"mount"}],"resources":{"pids":{"limit":5}}}});
+        let output: serde_json::Value =
+            serde_json::from_str(&sanitise_config(&input.to_string()).unwrap()).unwrap();
+        for pointer in [
+            "/annotations",
+            "/mounts",
+            "/root",
+            "/process/user",
+            "/process/args",
+            "/process/env",
+            "/linux/resources",
+        ] {
+            assert_eq!(input.pointer(pointer), output.pointer(pointer), "{pointer}");
+        }
+        assert_eq!(
+            output["linux"]["namespaces"][0],
+            input["linux"]["namespaces"][0]
+        );
+        assert_eq!(verify_json_config(&output.to_string()), 0);
+        assert_eq!(
+            output["process"]["capabilities"]["bounding"],
+            json!(["CAP_CHOWN"])
+        );
+        for set in ["effective", "permitted", "ambient"] {
+            assert_eq!(output["process"]["capabilities"][set], json!([]));
+        }
+        for cap in Capability::ALL {
+            assert_eq!(Capability::from_name(cap.name()), Some(cap));
+        }
+    }
 
     #[test]
     fn test_default_config_is_secure() {

@@ -1,11 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Verus SMT Deductive Verification Layer
-//!
-//! Provides SMT-discharged specifications and proof lemmas verified via Z3.
-//!
-//! When compiled with Verus (`verus --crate-type=lib`), this module proves:
-//! - Full inductive soundness of OCI container security boundaries
-//! - Preservation of non-privilege escalation under capability masking
+//! Unverified Verus specification sketch, excluded from ordinary Rust builds.
+//! The sketch calls executable functions in specification positions without a
+//! verified correspondence. Its lemmas have not been checked by Verus or Z3.
 
 use super::*;
 
@@ -39,7 +35,7 @@ pub proof fn lemma_validation_soundness(config: ContainerConfig)
     ensures
         verus_spec_is_secure(config),
 {
-    // Z3 SMT solver automatically discharges this case analysis:
+    // Intended case analysis (not verified):
     // If config.is_privileged => true
     // If not privileged => sys_admin is false, uid/ns conditions hold, net_admin holds
 }
@@ -52,7 +48,7 @@ pub proof fn lemma_defaults_enforce_security(config: ContainerConfig)
             verus_spec_is_secure(hardened)
         }),
 {
-    // Z3 proves that removing SysAdmin and fixing UID/NS/NetAdmin unconditionally satisfies verus_spec_is_secure
+    // Intended defaults property; executable/spec correspondence remains unverified.
 }
 
 } // verus!

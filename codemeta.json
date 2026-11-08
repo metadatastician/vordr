@@ -47,6 +47,11 @@
     },
     {
       "@type": "ComputerLanguage",
+      "name": "ReScript",
+      "url": "https://rescript-lang.org"
+    },
+    {
+      "@type": "ComputerLanguage",
       "name": "AffineScript",
       "url": "https://github.com/hyperpolymath/affinescript"
     }

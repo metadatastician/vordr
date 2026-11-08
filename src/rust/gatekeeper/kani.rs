@@ -6,7 +6,7 @@
 //! 1. Soundness: `validate_configuration(c) == Valid ==> is_secure(c)`
 //! 2. Completeness of defaults: `apply_security_defaults(c) ==> is_secure(c)`
 //! 3. Absence of Panics: Zero panics on any arbitrary input
-//! 4. Bijective Error Code Mapping: Total bijective mapping between exit codes and enums
+//! 4. Exit code round trip for codes 0 through 5 only; no claim for other i32 codes
 
 use super::*;
 
@@ -79,16 +79,13 @@ mod proof_harnesses {
         let _ = is_secure(&config);
     }
 
-    /// Theorem 4: Exit Code Bijectivity
+    /// Theorem 4: Exit code round trip for 0 through 5
     #[kani::proof]
     fn check_exit_code_bijectivity() {
         let code: i32 = kani::any();
         kani::assume(code >= 0 && code <= 5);
         let res = ValidationResult::from_exit_code(code);
-        kani::assert(
-            res.to_exit_code() == code,
-            "Bijective roundtrip failed",
-        );
+        kani::assert(res.to_exit_code() == code, "Exit code roundtrip failed");
     }
 }
 

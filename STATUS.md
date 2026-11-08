@@ -1,9 +1,13 @@
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:6ad56d2e7be5a3331fefe12af3f6efaa6e93c73870aecac4a58aabf5ce8e5562 -->
+
 <!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
 # Vordr — Measured Status
 
 **Last measured:** 2026-07-28 (Updated: 2026-10-18)  
 **Honest completion:** ~50%  
-**Languages:** Rust (CLI + MCP + Verified Gatekeeper) · Idris2 (proofs) · Ada/SPARK (legacy gatekeeper) · Elixir · AffineScript / ReScript (LSP)
+**Languages:** Rust (CLI + MCP + native gatekeeper) · Idris2 (proofs) · Ada/SPARK (legacy gatekeeper) · Elixir · AffineScript / ReScript (LSP)
 
 > This document records **measured** state: every claim below is a file read, a build
 > run, or a test executed on the dates shown. Where an existing document in this repo
@@ -12,25 +16,29 @@
 
 ## Summary
 
-~40%. Best proofs and most working Rust in the ecosystem — and its security layer does not exist at runtime.
+~50%. The Rust CLI and native security policy engine are implemented; container lifecycle operations and formal verification remain incomplete.
 
-## What genuinely works
+<!-- coderabbit-ai-generated:v1 -->
 
-- 17,643 lines of Rust; `cargo check --all-targets` passes; 143 tests pass across 370 functions with zero `todo!()`/`unimplemented!()`
-- **The best formal proofs in the estate**: 8 `.idr` files, 84 top-level definitions, `vordr.ipkg` with `opts = "--total"`, and ZERO `believe_me`/`assert_total`/holes in code
-- Genuine SPARK annotations: `SPARK_Mode (On)` in 4 of 5 spec files, 22 `Pre =>`/`Post =>` contracts, with `policy_interface.ads` correctly marked `Off` (FFI cannot be proven)
-- All 10 Ada source files are syntactically valid (`gcc -gnats`)
-- The README is the most honest self-assessment in the estate — it volunteers 'No real container runtime', 'zero BPF bytecode', 'Ada/SPARK never compiled with GNAT; C stubs used at runtime'
+<!-- coderabbit-ai-generated-section:v1:0c4d43bbf0f5273a3f6caac65e439df04f390f001ff3f6282b8228d8cb045688 -->
 
-## What is broken, missing, or misreported
+## What works
 
-- **The gatekeeper stub is FAIL-CLOSED; the real Ada gatekeeper still does not build.** (Corrected 2026-09-07: this entry previously described a stub that was substituted silently and accepted every input. Both halves are false of the current stub, which is announced loudly and rejects everything; they described the OLD stub. The superseded wording is in this file's git history.) `src/rust/build.rs` does not substitute silently on any path: with GNAT absent it links the stub and announces it on three `cargo:warning=` lines (`src/rust/build.rs:51`, `:53`, `:231`); with GNAT present and the Ada failing to compile it aborts the build rather than downgrade the security layer (`src/rust/build.rs:114`–`120`); the stub is otherwise reachable only by setting `VORDR_FORCE_STUB=1` deliberately (`src/rust/build.rs:31`, `:34`, `:48`–`49`). The stub rejects everything: `verify_json_config` returns `INTERNAL_ERROR` (-1) for every input (`src/rust/build.rs:164`, `:177`–`180`), `sanitise_config` returns the same (`src/rust/build.rs:203`–`209`), and its own comment reads `Stub gatekeeper: FAILS CLOSED. Rejects every configuration.` (`src/rust/build.rs:166`). Linking against it sets `cfg(gatekeeper_stub)` (`src/rust/build.rs:20`, `:230`), and the three acceptance-path tests that need a real verifier carry `#[cfg_attr(gatekeeper_stub, ignore)]` (`src/rust/ffi/gatekeeper.rs:412`, `:432`, `:444`), so under the stub they are skipped rather than passing against it — the 143-test figure recorded elsewhere here was measured 2026-07-28 and has not been re-measured. **Still not done:** the real Ada/SPARK gatekeeper does not compile — GNAT error E0015 (a function may not have a parameter of mode `in out`/`out`) in `oci_parser.ads`, owner task #39, parked (`src/ada/test/test_failopen.adb:12`, `src/ada/test/test_parser_failopen.adb:8`); `gnatprove` cannot be run locally (not on PATH), so no SPARK proof has been verified and the repo still contains zero `.spark` artifacts; and there is no `watch --config` subcommand — the CLI is `src/rust/cli/` (there is no `src/cli`), its `Commands` enum has no `Watch` variant (`src/rust/cli/mod.rs:72`–`181`), and its global flags are `--verbose`, `--db-path`, `--runtime`, `--root` with no `--config` (`src/rust/cli/mod.rs:35`–`69`).
+- Native Rust JSON validation and sanitisation run through `src/rust/ffi/gatekeeper.rs`.
+- Review validation (2026-11-08): `VORDR_FORCE_STUB=1 cargo test --lib --features creusot` passed all 60 library tests, including the security parser and sanitiser regressions and the 192-state Pearlite predicate comparison. These are executable tests, not formal proofs.
+- Idris2 proof sources and Ada/SPARK annotations are present; they were not compiled or proved in this review.
+
+
+
+<!-- /coderabbit-ai-generated:v1 -->## What is broken, missing, or misreported
+
+- **Native gatekeeper and legacy build path:** `src/rust/ffi/gatekeeper.rs` calls the native Rust engine for JSON validation and sanitisation. `build.rs` still compiles a fail-closed C stub when GNAT is unavailable or `VORDR_FORCE_STUB` is set; GNAT build failures abort. The stub is not the Rust bridge’s validation path. Creusot contracts and Kani harnesses are present, but no successful formal verification run is recorded. Pearlite is Creusot’s contract language; the local Pearlite and Verus modules are unverified sketches.
 - Root cause is known and small: `a-cofove.ads:36:07 — This package has been moved to the SPARK library shipped with any SPARK release starting with version 23` (plus `-gnatyo`/`-gnatyk` style errors).
 - **`gnatprove` has never been run** — no `.spark` artifacts anywhere in the repo. The 'SPARK-verified' claim is unsubstantiated.
-- `ffi/zig` fails to build on Zig 0.16 (`method invocation only supports up to one level of implicit pointer dereferencing`) — a mechanical 0.15->0.16 migration.
-- `ABI-FFI-README.md` is an UNFILLED TEMPLATE — line 2 is literally `{{~ Aditionally delete this line and fill out the template below ~}}`, and it is byte-identical to cerro-torre's.
-- `codemeta.json` claims `gitlab.com/hyperpolymath/vordr` — wrong host and wrong owner.
-- No build or test gate on GitHub; on GitLab 13 of 19 jobs are `allow_failure: true`, including every proof job and `spark-prove`.
+- Zig pointer dereferencing was updated for 0.16 compatibility (Next action 5); a current Zig build has not been remeasured here.
+- ABI documentation is filled in and describes the current Zig exports, including container stubs and function-specific return values.
+- `codemeta.json` repository and issue URLs now point to `github.com/metadatastician/vordr`.
+- `.github/workflows/build-test.yml` now declares a Rust build and test gate with the legacy stub forced. It does not establish Ada or formal proof coverage.
 
 ## Notes and open rulings
 
@@ -39,8 +47,8 @@
 
 ## Next actions
 
-1. DONE — build.rs now aborts when GNAT is present and the Ada fails to compile (src/rust/build.rs:114-120); the stub is reachable only by setting VORDR_FORCE_STUB=1 (src/rust/build.rs:31), which forces the stub rather than permitting it. VORDR_ALLOW_STUB_GATEKEEPER, the variable this action named, was never implemented.
-2. DONE (2026-10-18) — Migrated gatekeeper core from Ada/SPARK to Rust with quad-tier formal verification & model checking matrix: Creusot (deductive Why3/Coq), Verus (SMT Z3), Pearlite (functional contracts), and Kani (bounded model checking). Replaced fail-closed C stub with verified native Rust engine in `src/rust/gatekeeper/`.
+1. DONE — `build.rs` aborts on Ada compilation failure when GNAT is present. It uses the announced fail-closed C stub when GNAT is absent or `VORDR_FORCE_STUB` is set.
+2. DONE (implementation, 2026-10-18) — Added native Rust gatekeeper and routed the Rust bridge through it. Formal verification remains pending: Creusot contracts, Kani harnesses, and unverified Pearlite/Verus sketches are not evidence of discharged proofs.
 3. Fix the legacy SPARK library import error (a-cofove.ads) if retaining Ada as secondary target
 4. RULING NEEDED (R3): confirm vordr = health monitoring + crash detection
 5. DONE (2026-10-18) — Migrated `ffi/zig` pointer dereferencing for Zig 0.16 compatibility (`for (&threads) |*thread| thread.join();`).
@@ -55,12 +63,15 @@ ecosystem sitrep for the taxonomy.)
 
 **Gates that genuinely enforce something:**
 
-- **None.** This repo has no build or test gate that can fail.
+- Rust build and test jobs are declared in `.github/workflows/build-test.yml`; no CI execution was observed in this review.
 
-**Gates that run but cannot fail (or check nothing):**
+<!-- coderabbit-ai-generated:v1 -->
 
-- `codeql.yml` pinned to `language: actions` — zero application source analysed
-- **no build or test gate on GitHub at all**
+<!-- coderabbit-ai-generated-section:v1:b3a9043c408c1765080466c0d47926797b024b8b256a84a603bbbf89112539ba -->
+
+**Historical GitLab gate limitations (2026-07-28; not remeasured here):**
+
+<!-- /coderabbit-ai-generated:v1 -->
 - GitLab: 13 of 19 jobs `allow_failure: true`, including *every* proof job
 - `idris2-check` uses the fake per-file `--check` form (exits 0 on error) and omits `Proofs.idr` and `SBOM.idr`
 - `spark-prove` is `allow_failure: true` with the comment `# SPARK proofs are aspirational for now`
@@ -89,3 +100,6 @@ cerro-torre signing each as a `.ctp`, and selur as the network driver.
 **As of this measurement no repo emits or consumes that bundle**; five mutually
 incompatible ad-hoc contracts exist instead, of which exactly one works.
 
+
+
+<!-- /coderabbit-ai-generated:v1 -->
