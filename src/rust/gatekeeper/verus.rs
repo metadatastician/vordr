@@ -18,6 +18,7 @@ macro_rules! verus {
 
 verus! {
 
+/// Specify the gatekeeper policy, including the privileged-mode bypass.
 pub open spec fn verus_spec_is_secure(config: ContainerConfig) -> bool {
     config.is_privileged
         || (!config.capabilities.has(Capability::SysAdmin)
@@ -29,6 +30,7 @@ pub open spec fn verus_spec_is_secure(config: ContainerConfig) -> bool {
                 || config.user_namespace))
 }
 
+/// State that successful validation implies the security predicate.
 pub proof fn lemma_validation_soundness(config: ContainerConfig)
     requires
         validate_configuration(&config) == ValidationResult::Valid,
@@ -40,6 +42,7 @@ pub proof fn lemma_validation_soundness(config: ContainerConfig)
     // If not privileged => sys_admin is false, uid/ns conditions hold, net_admin holds
 }
 
+/// State that applying security defaults establishes the security predicate.
 pub proof fn lemma_defaults_enforce_security(config: ContainerConfig)
     ensures
         ({

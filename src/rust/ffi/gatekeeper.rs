@@ -36,7 +36,8 @@ pub enum GatekeeperError {
 }
 
 impl GatekeeperError {
-    /// Convert from exit code (matching C ABI / Ada To_Exit_Code)
+    /// Convert an ABI status code to success (0) or a validation error (1–5).
+    /// All other codes return `InternalError`.
     pub fn from_code(code: i32) -> Result<(), Self> {
         match code {
             0 => Ok(()),
@@ -50,8 +51,7 @@ impl GatekeeperError {
     }
 }
 
-/// Initialize the gatekeeper.
-/// Safe to call multiple times - subsequent calls are no-ops.
+/// Compatibility initializer; always returns `Ok(())` and has no side effects.
 pub fn init() -> Result<(), GatekeeperError> {
     Ok(())
 }
@@ -64,6 +64,15 @@ pub fn init() -> Result<(), GatekeeperError> {
 /// # Returns
 /// * `Ok(())` if the configuration passes all security checks
 /// * `Err(GatekeeperError)` describing why validation failed
+///
+/// Requires `process.user.uid`; optional security fields use the conservative
+/// defaults from [`crate::gatekeeper::parse_oci_json`]. Malformed supported
+/// security fields are rejected; this does not validate the full OCI schema.
+///
+/// # Errors
+/// Returns `NullByte` for a literal NUL, `ParseError` for empty or malformed
+/// JSON, missing required fields, or malformed supported security values; otherwise
+/// returns the first policy error from the parsed configuration.
 pub fn validate_oci_config(json_content: &str) -> Result<(), GatekeeperError> {
     if json_content.contains('\0') {
         return Err(GatekeeperError::NullByte);
@@ -74,11 +83,20 @@ pub fn validate_oci_config(json_content: &str) -> Result<(), GatekeeperError> {
 }
 
 /// Get a human-readable description of an error code.
+/// Codes outside 0–5 return the internal-error description.
 pub fn get_error_description(code: i32) -> String {
     crate::gatekeeper::get_error_message(code).to_string()
 }
 
-/// Sanitise an OCI configuration by applying security defaults.
+/// Sanitize an OCI configuration by applying security defaults.
+///
+/// Returns the updated JSON from [`crate::gatekeeper::sanitise_config`], preserving
+/// existing OCI fields and non-user namespaces while hardening capability sets
+/// and user namespace settings.
+///
+/// # Errors
+/// Returns `NullByte` for a literal NUL. Propagates parsing failures as
+/// `ParseError` and serialization failures as `InternalError`.
 pub fn sanitise_oci_config(json_content: &str) -> Result<String, GatekeeperError> {
     if json_content.contains('\0') {
         return Err(GatekeeperError::NullByte);
@@ -177,7 +195,13 @@ impl ConfigValidator {
         self
     }
 
-    /// Build and validate the configuration.
+    /// Build and validate the serialized UID, namespace, network, and root settings.
+    ///
+    /// Privileged mode and capabilities are retained in the returned configuration
+    /// but are not included in the JSON checked by the gatekeeper.
+    ///
+    /// # Errors
+    /// Propagates errors from [`validate_oci_config`], including policy failures.
     pub fn validate(self) -> Result<ValidatedConfig, GatekeeperError> {
         let config_json = self.to_json();
         validate_oci_config(&config_json)?;
@@ -246,7 +270,16 @@ pub struct ImageVerificationReport {
     pub warnings: Vec<String>,
 }
 
-/// Verify an image reference through the formally verified gatekeeper.
+/// Build a local image report using configuration validation and string heuristics.
+///
+/// No registry requests or signature checks are performed. The
+/// `registry_verified` attestation reflects only a `cgr.dev/` or `ghcr.io/`
+/// prefix; warnings reflect tag and digest string patterns.
+///
+/// # Errors
+/// Returns `ParseError` for an empty reference. Errors validating the generated
+/// JSON (including invalid JSON caused by unescaped reference characters) are
+/// converted to an `Ok` report with `passed: false` and a warning.
 pub fn validate_image(image: &str) -> Result<ImageVerificationReport, GatekeeperError> {
     if image.is_empty() {
         return Err(GatekeeperError::ParseError);

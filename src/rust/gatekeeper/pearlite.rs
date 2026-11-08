@@ -10,6 +10,8 @@ pub struct PearlitePolicySpec;
 
 impl PearlitePolicySpec {
     /// Pure logical definition of container boundary safety
+    /// Privileged mode bypasses all checks. Otherwise, `SysAdmin`, root without a
+    /// user namespace, or `NetAdmin` with unprivileged networking returns false.
     #[inline]
     pub fn is_safe_state(
         is_priv: bool,
