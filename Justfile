@@ -114,8 +114,12 @@ build-wasm:
 # ============================================================================
 
 # Run all tests
-test: test-idris2 test-rust test-elixir
+test: test-readme test-idris2 test-rust test-elixir
     @echo "All tests passed"
+
+# README badge regression checks
+test-readme:
+    @sh tests/readme-badges.sh
 
 # Test Idris2
 test-idris2:
